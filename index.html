@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>복식부기 가계부 — 연결 확인</title>
+  <style>
+    /* 0단계 임시 화면: 배포·Supabase 연결이 되는지만 확인합니다. 1단계에서 실제 앱으로 바뀝니다. */
+    :root {
+      --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6676;
+      --ok: #157347; --bad: #b42318; --wait: #8a6d00; --line: #e3e6eb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12151b; --card: #1c2129; --text: #e8ebf0; --muted: #9aa3b2;
+        --ok: #4cc38a; --bad: #ff8a80; --wait: #e0c050; --line: #2c333e;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+    main { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    p.sub { color: var(--muted); margin: 0 0 20px; }
+    ol { list-style: none; padding: 0; margin: 0; background: var(--card);
+         border: 1px solid var(--line); border-radius: 12px; }
+    li { display: flex; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line); }
+    li:first-child { border-top: 0; }
+    .icon { flex: 0 0 24px; text-align: center; }
+    .title { font-weight: 600; }
+    .detail { color: var(--muted); font-size: 0.9rem; word-break: break-all; }
+    .ok   .icon { color: var(--ok); }
+    .bad  .icon { color: var(--bad); }
+    .wait .icon { color: var(--wait); }
+    .summary { margin-top: 16px; padding: 14px 16px; border-radius: 12px; font-weight: 600; }
+    .summary.ok  { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+    .summary.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>복식부기 가계부</h1>
+    <p class="sub">0단계 연결 확인 페이지입니다.</p>
+    <ol id="checks"></ol>
+    <div id="summary" class="summary" hidden></div>
+  </main>
+
+  <script type="module">
+    // 점검 항목을 화면에 추가하고, 나중에 결과로 바꿀 수 있는 함수를 돌려줌
+    const list = document.getElementById('checks');
+    function addCheck(title) {
+      const li = document.createElement('li');
+      li.className = 'wait';
+      li.innerHTML = '<span class="icon">…</span><div><div class="title"></div><div class="detail">확인 중</div></div>';
+      li.querySelector('.title').textContent = title;
+      list.append(li);
+      return (ok, detail) => {
+        li.className = ok ? 'ok' : 'bad';
+        li.querySelector('.icon').textContent = ok ? '✔' : '✘';
+        li.querySelector('.detail').textContent = detail;
+        return ok;
+      };
+    }
+
+    function finish(ok, message) {
+      const box = document.getElementById('summary');
+      box.hidden = false;
+      box.className = 'summary ' + (ok ? 'ok' : 'bad');
+      box.textContent = message;
+    }
+
+    // 키 종류 판별: 옛 형식(JWT)은 내용의 role, 새 형식은 접두어로 구분
+    function keyRole(key) {
+      if (key.startsWith('sb_publishable_')) return 'anon';
+      if (key.startsWith('sb_secret_')) return 'service_role';
+      try {
+        const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        return payload.role ?? 'unknown';
+      } catch {
+        return 'unknown';
+      }
+    }
+
+    async function run() {
+      // 1. GitHub Pages에서 페이지가 열림
+      addCheck('페이지 배포')(true, location.href);
+
+      // 2. config.js 읽기
+      const cfgCheck = addCheck('config.js 설정');
+      let cfg;
+      try {
+        cfg = await import('./config.js');
+      } catch (e) {
+        cfgCheck(false, 'config.js를 불러오지 못했습니다: ' + e.message);
+        return finish(false, 'config.js 파일이 같은 폴더에 있는지 확인하세요.');
+      }
+      if (cfg.SUPABASE_URL.includes('YOUR-PROJECT') || cfg.SUPABASE_ANON_KEY.includes('YOUR-ANON')) {
+        cfgCheck(false, '아직 예시 값 그대로입니다.');
+        return finish(false, 'config.js에 Supabase Project URL과 anon 키를 넣으세요.');
+      }
+      const role = keyRole(cfg.SUPABASE_ANON_KEY);
+      if (role === 'service_role') {
+        cfgCheck(false, 'service_role(secret) 키가 들어 있습니다!');
+        return finish(false, '즉시 config.js에서 지우고 anon 키로 바꾸세요. 이미 GitHub에 올렸다면 Supabase에서 그 키를 재발급(rotate)하세요.');
+      }
+      cfgCheck(true, `${cfg.SUPABASE_URL} (키 종류: ${role})`);
+
+      // 3. Supabase 연결 + schema.sql 실행 여부
+      const dbCheck = addCheck('Supabase 연결 · schema.sql');
+      try {
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+        const supabase = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+        const { data, error } = await supabase.rpc('schema_version');
+        if (error) {
+          const hint = error.code === 'PGRST202'
+            ? 'schema.sql이 아직 실행되지 않은 것 같습니다.'
+            : error.message;
+          dbCheck(false, hint);
+          return finish(false, 'SQL Editor에서 schema.sql을 실행했는지, URL·키가 맞는지 확인하세요.');
+        }
+        dbCheck(true, `스키마 버전 ${data}`);
+      } catch (e) {
+        dbCheck(false, '서버에 연결하지 못했습니다: ' + e.message);
+        return finish(false, '인터넷 연결과 Project URL을 확인하세요.');
+      }
+
+      finish(true, '모든 준비가 끝났습니다. 1단계로 넘어갈 수 있습니다.');
+    }
+
+    run();
+  </script>
+</body>
+</html>

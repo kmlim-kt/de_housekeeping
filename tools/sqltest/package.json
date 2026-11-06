@@ -1,0 +1,12 @@
+{
+  "name": "de-housekeeping-sqltest",
+  "private": true,
+  "type": "module",
+  "description": "로컬에서 schema.sql과 tests.sql을 PGlite로 검증",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.15"
+  }
+}
