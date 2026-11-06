@@ -102,6 +102,17 @@
         cfgCheck(false, '아직 예시 값 그대로입니다.');
         return finish(false, 'config.js에 Supabase Project URL과 anon 키를 넣으세요.');
       }
+      // Project URL은 https://xxxx.supabase.co 까지만 (뒤에 /rest/v1 등 경로가 붙으면 안 됨)
+      try {
+        const u = new URL(cfg.SUPABASE_URL);
+        if (u.pathname !== '/' && u.pathname !== '') {
+          cfgCheck(false, `URL 뒤에 "${u.pathname}" 경로가 붙어 있습니다.`);
+          return finish(false, `SUPABASE_URL을 "${u.origin}" 까지만 남기세요.`);
+        }
+      } catch {
+        cfgCheck(false, 'SUPABASE_URL이 올바른 주소 형식이 아닙니다.');
+        return finish(false, 'https://xxxx.supabase.co 형식으로 넣으세요.');
+      }
       const role = keyRole(cfg.SUPABASE_ANON_KEY);
       if (role === 'service_role') {
         cfgCheck(false, 'service_role(secret) 키가 들어 있습니다!');

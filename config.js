@@ -9,5 +9,5 @@
 //    이 파일은 GitHub에 공개됩니다. anon 키는 공개되어도 안전하도록 RLS로 보호됩니다.
 // =====================================================================
 
-export const SUPABASE_URL = 'https://smzvjdajyvvgxnljntyz.supabase.co/rest/v1/';
+export const SUPABASE_URL = 'https://smzvjdajyvvgxnljntyz.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_W3YSTLMz3yaWlUuGeTTGrA_nHtrN6Rv';
