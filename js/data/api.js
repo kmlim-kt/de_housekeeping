@@ -158,6 +158,86 @@ export async function listRecentTransactions(ledgerId, limit = 10) {
   );
 }
 
+/**
+ * 전표 검색 (분개장·휴지통)
+ * @param {{ ledgerId, from?, to?, accountId?, query?, min?, max?, deleted?, limit?, offset? }} f
+ * @returns {Promise<{ rows: Array, total: number }>}
+ */
+export async function searchTransactions(f) {
+  const rows = await call(supabase.rpc('search_transactions', {
+    p_ledger_id: f.ledgerId,
+    p_from: f.from || null,
+    p_to: f.to || null,
+    p_account_id: f.accountId || null,
+    p_query: f.query || null,
+    p_min: f.min ?? null,
+    p_max: f.max ?? null,
+    p_deleted: !!f.deleted,
+    p_limit: f.limit ?? 50,
+    p_offset: f.offset ?? 0,
+  }));
+  return { rows, total: rows[0]?.total_count ?? 0 };
+}
+
+/** 전표 한 건 (분개 라인 포함, 휴지통 포함) */
+export async function getTransaction(id) {
+  return call(
+    supabase
+      .from('transactions')
+      .select('id, ledger_id, txn_date, memo, kind, source, is_deleted, deleted_at, created_at, updated_at, created_by, updated_by, lines(account_id, debit, credit, memo, line_no)')
+      .eq('id', id)
+      .maybeSingle(),
+  );
+}
+
+/**
+ * 전표 수정 (RPC update_transaction) — 분개 라인 전체 교체
+ * expectedUpdatedAt: 불러온 시점의 updated_at. 그 사이 다른 기기에서 고쳤으면 DB가 거부
+ * @returns {Promise<string>} 새 updated_at
+ */
+export async function updateTransaction({ id, date, memo, kind, lines, expectedUpdatedAt }) {
+  return call(supabase.rpc('update_transaction', {
+    p_id: id, p_date: date, p_memo: memo, p_kind: kind, p_lines: lines,
+    p_expected_updated_at: expectedUpdatedAt ?? null,
+  }));
+}
+
+/** 휴지통으로 옮기기(true) / 복원(false) */
+export async function setTransactionDeleted(id, deleted) {
+  return call(supabase.rpc('set_transaction_deleted', { p_id: id, p_deleted: deleted }));
+}
+
+/** 휴지통의 전표 영구 삭제 */
+export async function purgeTransaction(id) {
+  return call(supabase.rpc('purge_transaction', { p_id: id }));
+}
+
+/** 전표 변경 이력 (최신 순) */
+export async function transactionHistory(id) {
+  return call(
+    supabase
+      .from('audit_log')
+      .select('id, action, before, after, changed_by, changed_at')
+      .eq('transaction_id', id)
+      .order('changed_at', { ascending: false }),
+  );
+}
+
+/** 계정별 합계·잔액 (시산표·재무상태표) */
+export async function accountBalances(ledgerId, from = null, to = null) {
+  return call(supabase.rpc('account_balances', { p_ledger_id: ledgerId, p_from: from, p_to: to }));
+}
+
+/** 계정별 원장 (기간 내 거래와 누적 잔액, 상위 계정이면 하위 합산) */
+export async function accountLedger(accountId, from = null, to = null) {
+  return call(supabase.rpc('account_ledger', { p_account_id: accountId, p_from: from, p_to: to }));
+}
+
+/** DB 스키마 버전 (업데이트 SQL을 실행했는지 확인) */
+export async function schemaVersion() {
+  return call(supabase.rpc('schema_version'));
+}
+
 /** 장부 검증 (차대 합계, 불균형 전표, 회계 등식) */
 export async function ledgerCheck(ledgerId, asOf = null) {
   return call(supabase.rpc('ledger_check', { p_ledger_id: ledgerId, p_as_of: asOf }));

@@ -53,16 +53,29 @@ export function errorBox(message, onRetry) {
     onRetry ? h('button', { class: 'btn small', type: 'button', onClick: onRetry }, '다시 시도') : null);
 }
 
-/** 화면 아래쪽 알림 */
-export function toast(message, { type = 'info', duration = 3500 } = {}) {
+/**
+ * 화면 아래쪽 알림
+ * @param {string} message
+ * @param {{ type?: 'info'|'error', duration?: number, action?: { label: string, onClick: () => void } }} [opts]
+ *   action: 알림 안의 버튼 (예: [되돌리기])
+ */
+export function toast(message, { type = 'info', duration = 3500, action } = {}) {
   let area = document.querySelector('.toast-area');
   if (!area) {
     area = h('div', { class: 'toast-area', 'aria-live': 'polite' });
     document.body.append(area);
   }
-  const t = h('div', { class: `toast ${type === 'error' ? 'bad' : ''}`, role: type === 'error' ? 'alert' : 'status' }, message);
+  const t = h('div', { class: `toast ${type === 'error' ? 'bad' : ''}`, role: type === 'error' ? 'alert' : 'status' },
+    h('span', {}, message),
+    action ? h('button', { type: 'button', class: 'toast-action',
+      onClick: () => { t.remove(); action.onClick(); } }, action.label) : null);
   area.append(t);
-  setTimeout(() => t.remove(), duration);
+  setTimeout(() => t.remove(), action ? Math.max(duration, 6000) : duration);
+}
+
+/** 모바일 우선 표 대신 쓰는 "이름 — 값" 한 줄 */
+export function kv(label, value, cls = '') {
+  return h('div', { class: 'kv ' + cls }, h('span', { class: 'muted' }, label), h('span', { class: 'num' }, value));
 }
 
 /**

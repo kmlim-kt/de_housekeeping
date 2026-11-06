@@ -8,7 +8,7 @@ import { state, setState, prefs } from './ui/state.js';
 import { applyTheme } from './ui/theme.js';
 import { renderAuth } from './ui/auth.js';
 import { renderShell, renderView, navigate } from './ui/shell.js';
-import { getSession, onAuthChange, listLedgers, listAccounts, ledgerCheck } from './data/api.js';
+import { getSession, onAuthChange, listLedgers, listAccounts, ledgerCheck, schemaVersion } from './data/api.js';
 import { onQueueChange, flush, queueInfo, isNetworkError } from './data/sync.js';
 import { supabase } from './data/supabase.js';
 
@@ -111,6 +111,22 @@ async function enterApp(session, force = false) {
   } else {
     syncNow();
     maybeStartOpeningWizard();
+    checkSchema();
+  }
+}
+
+/** 이 앱이 필요로 하는 DB 버전 (sql/migrations 를 실행하면 올라감) */
+const REQUIRED_SCHEMA = 2;
+
+async function checkSchema() {
+  try {
+    const v = await schemaVersion();
+    if (v < REQUIRED_SCHEMA) {
+      toast(`DB 업데이트가 필요합니다 (현재 ${v} → 필요 ${REQUIRED_SCHEMA}). Supabase SQL Editor에서 sql/migrations 폴더의 업데이트 SQL을 실행하세요.`,
+        { type: 'error', duration: 15000 });
+    }
+  } catch {
+    /* 확인 실패는 무시 (각 화면에서 오류를 따로 알림) */
   }
 }
 

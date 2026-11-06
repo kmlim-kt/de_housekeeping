@@ -8,7 +8,8 @@ import { state, prefs, markUsed, subscribe } from '../state.js';
 import { simpleForm } from './entry-simple.js';
 import { advancedForm } from './entry-advanced.js';
 import { KIND_LABELS } from '../../core/journal.js';
-import { indexAccounts, describeLines, accountLabel } from '../../core/balance.js';
+import { indexAccounts, describeLines } from '../../core/balance.js';
+import { transactionCard } from '../widgets.js';
 import { formatAmount } from '../../core/money.js';
 import { listRecentTransactions } from '../../data/api.js';
 import { submitTransaction, flush, retry, discard } from '../../data/sync.js';
@@ -115,24 +116,9 @@ export function render(view) {
         replace(recentBox, h('p', { class: 'muted' }, '아직 저장한 전표가 없습니다.'));
         return;
       }
-      replace(recentBox, h('ul', { class: 'list' }, rows.map((t) => transactionItem(t, byId))));
+      replace(recentBox, h('ul', { class: 'list' }, rows.map((t) => h('li', { class: 'txn-li' }, transactionCard(t, byId)))));
     } catch (err) {
       replace(recentBox, errorBox(err.message, loadRecent));
     }
   }
-}
-
-/** 전표 한 건 표시 */
-export function transactionItem(t, byId) {
-  const sorted = [...t.lines].sort((a, b) => (b.debit - a.debit) || (a.line_no - b.line_no));
-  return h('li', { class: 'txn' },
-    h('div', { class: 'row between' },
-      h('strong', {}, t.memo || KIND_LABELS[t.kind] || '전표'),
-      h('span', { class: 'small muted num' }, t.txn_date)),
-    h('div', { class: 'lines' }, sorted.map((l) =>
-      h('div', {},
-        h('span', { class: l.debit > 0 ? 'debit' : 'credit' },
-          (l.debit > 0 ? '차변 ' : '대변 ') + accountLabel(byId.get(l.account_id), byId)),
-        h('span', { class: 'num' }, formatAmount(l.debit || l.credit))))),
-    h('span', { class: 'small muted' }, KIND_LABELS[t.kind] ?? t.kind));
 }

@@ -21,6 +21,15 @@ if (missing.length) {
 } else {
   console.log(`✔ sw.js PRECACHE에 앱 파일 ${appFiles.length}개 모두 포함`);
 }
+// 반대로 PRECACHE에 있는데 실제로 없는 파일 (하나라도 없으면 서비스 워커 설치가 실패함)
+const listed = [...sw.matchAll(/^\s+'([^']+)',$/gm)].map((m) => m[1]).filter((p) => p !== './');
+const ghost = listed.filter((p) => { try { statSync(new URL(p, root)); return false; } catch { return true; } });
+if (ghost.length) {
+  failed++;
+  console.log(`✘ sw.js PRECACHE에 있지만 없는 파일: ${ghost.join(', ')}`);
+} else {
+  console.log(`✔ sw.js PRECACHE 목록 ${listed.length}개 모두 실제로 있음`);
+}
 
 console.log(failed ? `\n${failed}건 실패` : `\n✅ 모두 통과 (테스트 ${results.length}건 + 파일 목록 점검)`);
 process.exitCode = failed ? 1 : 0;

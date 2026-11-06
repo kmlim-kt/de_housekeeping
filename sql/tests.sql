@@ -150,6 +150,32 @@ begin
   assert (r->>'equation_ok')::boolean, '❌ [급여·대출] 회계 등식 성립해야 함: ' || r::text;
 
   ------------------------------------------------------------------
+  -- 1-1. 거래 검색 (분개장) — 지금까지 전표 5건
+  ------------------------------------------------------------------
+  select count(*) into n from public.search_transactions(la);
+  assert n = 5, format('❌ [검색] 전체 5건이어야 함 (실제 %s)', n);
+  select total_count into n from public.search_transactions(la, p_limit => 1);
+  assert n = 5, format('❌ [검색] 1건만 가져와도 전체 건수는 5여야 함 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_account_id => a_card);
+  assert n = 3, format('❌ [검색] 카드 계정 거래 3건이어야 함 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_account_id => a_bank_parent);
+  assert n = 4, format('❌ [검색] 상위 계정(보통예금)으로 찾으면 하위 계정 거래 4건 포함 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_query => '점심');
+  assert n = 1, format('❌ [검색] 메모 "점심" 1건 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_query => '세금');
+  assert n = 1, format('❌ [검색] 계정 이름 "세금" 1건 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_query => '%');
+  assert n = 0, format('❌ [검색] "%%"는 글자 그대로 찾아야 함 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_min => 3000000);
+  assert n = 1, format('❌ [검색] 300만 원 이상 1건 (급여 330만) (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_from => '2026-01-25', p_to => '2026-01-25');
+  assert n = 2, format('❌ [검색] 1월 25일 2건 (실제 %s)', n);
+  select total into n from public.search_transactions(la, p_query => '점심');
+  assert n = 30000, format('❌ [검색] 전표 합계 3만 원 (실제 %s)', n);
+  select jsonb_array_length(lines) into n from public.search_transactions(la, p_query => '1월 급여');
+  assert n = 3, format('❌ [검색] 급여 전표의 분개 라인 3줄 (실제 %s)', n);
+
+  ------------------------------------------------------------------
   -- 2. 차대 검증 (RPC가 거부해야 하는 입력)
   ------------------------------------------------------------------
   failed := false;
@@ -230,6 +256,10 @@ begin
   perform public.set_transaction_deleted(t_food, true);
   select balance into n from public.account_balances(la) where account_id = a_food;
   assert n = 0, format('❌ [삭제] 휴지통 전표는 잔액에서 빠져야 함 (실제 %s)', n);
+  select count(*) into n from public.search_transactions(la, p_query => '점심');
+  assert n = 0, '❌ [휴지통] 휴지통 전표는 일반 검색에 나오지 않아야 함';
+  select count(*) into n from public.search_transactions(la, p_deleted => true);
+  assert n = 1, format('❌ [휴지통] 휴지통 검색에 1건 (실제 %s)', n);
   r := public.ledger_check(la);
   assert (r->>'equation_ok')::boolean, '❌ [삭제] 삭제 후에도 회계 등식 성립해야 함: ' || r::text;
 
@@ -374,6 +404,10 @@ begin
   assert n = 0, '❌ [RLS] B가 A 장부의 잔액을 조회하면 빈 결과여야 함';
   select count(*) into n from public.v_monthly_pnl where ledger_id = la;
   assert n = 0, '❌ [RLS] B는 A의 월별 손익을 볼 수 없어야 함';
+  select count(*) into n from public.search_transactions(la);
+  assert n = 0, '❌ [RLS] B가 A 장부의 거래를 검색하면 빈 결과여야 함';
+  select count(*) into n from public.account_ledger(a_cash);
+  assert n = 0, '❌ [RLS] B는 A 계정의 원장을 볼 수 없어야 함';
 
   update public.accounts set name = '해킹' where id = a_cash;
   select count(*) into n from public.accounts where name = '해킹';
@@ -476,7 +510,13 @@ begin
   exception when others then failed := true;
   end;
   assert failed, '❌ [anon] 로그인하지 않으면 전표를 저장할 수 없어야 함';
-  assert public.schema_version() = 1, '❌ [anon] 연결 확인용 schema_version()은 호출 가능해야 함';
+  assert public.schema_version() >= 2, '❌ [버전] schema_version()이 2 이상이어야 함 (DB 업데이트 2 실행 여부)';
+  failed := false;
+  begin
+    perform public.search_transactions(la);
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [anon] 로그인하지 않으면 거래 검색을 할 수 없어야 함';
 
   perform set_config('role', 'none', true);
 

@@ -14,21 +14,29 @@ import { formatAmount } from '../../core/money.js';
 const emptyLine = () => ({ accountId: '', debit: '', credit: '' });
 
 /**
- * @param {{ save: (payload) => Promise<boolean> }} ctx save: 저장 성공(또는 대기열 보관)이면 true
+ * @param {{ save: (payload) => Promise<boolean>,
+ *           initial?: { id: string, kind: string, date: string, memo: string, lines: Array<{account_id, debit, credit, memo}> },
+ *           submitLabel?: string }} ctx
+ *   save: 저장 성공(또는 대기열 보관)이면 true
+ *   initial: 수정할 때 기존 전표 (저장 후 입력란을 비우지 않음)
  * @returns {HTMLElement}
  */
-export function advancedForm({ save }) {
+export function advancedForm({ save, initial = null, submitLabel = '저장' }) {
   const options = postableAccounts(state.accounts);
   const postable = new Set(postableAccounts(state.accounts, { includeHidden: true }).map((a) => a.id));
   const byId = indexAccounts(state.accounts);
 
-  let lines = [emptyLine(), emptyLine()];
+  let lines = initial
+    ? [...initial.lines].sort((a, b) => a.line_no - b.line_no).map((l) => ({
+        accountId: l.account_id, debit: l.debit ? String(l.debit) : '', credit: l.credit ? String(l.credit) : '', memo: l.memo ?? '' }))
+    : [emptyLine(), emptyLine()];
   // 저장할 전표 id: 저장에 실패해 다시 누르면 같은 id로 보내 중복 저장을 막음
-  let pendingId = crypto.randomUUID();
+  let pendingId = initial?.id ?? crypto.randomUUID();
 
   // ---------- 날짜·메모 ----------
-  const dateInput = h('input', { type: 'date', value: todayLocal(), required: true, 'aria-label': '날짜' });
-  const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '예: 1월 급여', 'aria-label': '메모', enterkeyhint: 'done' });
+  const dateInput = h('input', { type: 'date', value: initial?.date ?? todayLocal(), required: true, 'aria-label': '날짜' });
+  const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '예: 1월 급여', 'aria-label': '메모',
+    enterkeyhint: 'done', value: initial?.memo ?? '' });
   dateInput.addEventListener('input', update);
 
   // ---------- 분개 라인 ----------
@@ -40,7 +48,7 @@ export function advancedForm({ save }) {
   const creditTotal = h('strong', { class: 'credit' }, '0');
   const diffBox = h('div', { class: 'diff' }, h('span', {}, '차액'), h('strong', {}, '0'));
   const hint = h('p', { class: 'small muted', 'aria-live': 'polite' });
-  const saveBtn = h('button', { class: 'btn primary block', type: 'submit' }, '저장');
+  const saveBtn = h('button', { class: 'btn primary block', type: 'submit' }, submitLabel);
   const summary = h('div', { class: 'je-summary' },
     h('div', { class: 'je-totals' },
       h('div', {}, h('span', {}, '차변 합계'), debitTotal),
@@ -154,11 +162,13 @@ export function advancedForm({ save }) {
       ledgerId: state.ledgerId,
       date: dateInput.value,
       memo: memoInput.value.trim(),
-      kind: 'manual',
+      // 고급 입력으로 고치면 간편 입력 모양이 아닐 수 있어 '직접 분개'로 (개시 잔액은 유지)
+      kind: initial?.kind === 'opening' ? 'opening' : 'manual',
       source: 'advanced',
       lines: toRpcLines(lines),
     };
     const done = await withBusy(saveBtn, '저장 중…', () => save(payload));
+    if (done && initial) return;   // 수정: 화면 이동은 호출한 쪽이 처리
     if (done) {
       // 다음 입력 준비 (날짜는 유지 — 같은 날 여러 건 입력이 많음)
       pendingId = crypto.randomUUID();

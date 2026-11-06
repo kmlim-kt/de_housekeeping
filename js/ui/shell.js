@@ -10,7 +10,11 @@ import * as entry from './screens/entry.js';
 import * as settings from './screens/settings.js';
 import * as accounts from './screens/accounts.js';
 import * as opening from './screens/opening.js';
-import { placeholder } from './screens/placeholder.js';
+import * as list from './screens/list.js';
+import * as txn from './screens/txn.js';
+import * as reports from './screens/reports.js';
+import * as reportLedger from './screens/report-ledger.js';
+import * as reportTrial from './screens/report-trial.js';
 
 // 탭 아이콘 (24x24 선 아이콘 경로)
 const ICONS = {
@@ -34,18 +38,42 @@ const TABS = [
 const ROUTES = {
   dashboard: dashboard.render,
   entry: entry.render,
-  list: placeholder('거래 목록', '분개장·검색·필터·휴지통은 3단계에서 만듭니다. 지금은 [입력] 화면 아래에서 최근 전표를 볼 수 있습니다.'),
-  reports: placeholder('보고서', '계정별 원장·시산표는 3단계, 재무상태표·손익계산서는 4단계에서 만듭니다.'),
+  list: list.render,
+  reports: reports.render,
+  'reports/ledger': reportLedger.render,
+  'reports/trial': reportTrial.render,
   settings: settings.render,
   'settings/accounts': accounts.render,
   opening: opening.render,
 };
 
+/** 주소에 값이 들어가는 화면: #/txn/<전표id>, #/txn/<전표id>/edit */
+const PATTERNS = [
+  [/^txn\/([0-9a-f-]{36})$/, (view, c, [id]) => txn.renderDetail(view, c, id)],
+  [/^txn\/([0-9a-f-]{36})\/edit$/, (view, c, [id]) => txn.renderEdit(view, c, id)],
+];
+
 export const DEFAULT_ROUTE = 'dashboard';
 
+/** 현재 주소의 화면 이름 (알 수 없는 주소면 대시보드). ?뒤 값은 화면 안 옵션 */
 export function currentRoute() {
-  const r = location.hash.replace(/^#\/?/, '');
-  return ROUTES[r] ? r : DEFAULT_ROUTE;
+  const r = location.hash.replace(/^#\/?/, '').split('?')[0];
+  if (ROUTES[r] || PATTERNS.some(([re]) => re.test(r))) return r;
+  return DEFAULT_ROUTE;
+}
+
+/** 주소의 ?뒤 값 (예: #/reports/ledger?account=...) */
+export function routeParams() {
+  return new URLSearchParams(location.hash.split('?')[1] ?? '');
+}
+
+function resolve(route) {
+  if (ROUTES[route]) return (view, c) => ROUTES[route](view, c);
+  for (const [re, fn] of PATTERNS) {
+    const m = route.match(re);
+    if (m) return (view, c) => fn(view, c, m.slice(1));
+  }
+  return ROUTES[DEFAULT_ROUTE];
 }
 
 /**
@@ -113,7 +141,9 @@ export function renderShell(root, context) {
   }
 
   markTab = () => {
-    const top = currentRoute().split('/')[0];
+    const route = currentRoute();
+    // 전표 상세는 거래목록 탭에 속함
+    const top = route.startsWith('txn/') ? 'list' : route.split('/')[0];
     for (const a of tabLinks) {
       if (a.dataset.route === top) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -134,7 +164,7 @@ export function renderView() {
   cleanup?.();
   cleanup = null;
   view.replaceChildren();
-  const result = ROUTES[currentRoute()](view, ctx);
+  const result = resolve(currentRoute())(view, { ...ctx, params: routeParams() });
   if (typeof result === 'function') cleanup = result;
   window.scrollTo(0, 0);
 }

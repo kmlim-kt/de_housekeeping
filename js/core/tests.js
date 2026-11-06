@@ -6,7 +6,8 @@
 import { parseAmount, formatAmount, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
-import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, SIMPLE_FORMS } from './simple.js';
+import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
+import { trialBalance, periodRange, accountTotal, dayBefore } from './reports.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -255,6 +256,86 @@ test('기본 선택: 결제수단은 최근 사용, 이자는 "대출이자" 우
   eq(defaultChoice(pick('expense', 'sourceId'), optsFor(pick('expense', 'sourceId')), recent), 'card1');
   eq(defaultChoice(pick('expense', 'expenseId'), optsFor(pick('expense', 'expenseId')), recent), '');
   eq(defaultChoice(pick('loan_repayment', 'interestId'), optsFor(pick('loan_repayment', 'interestId')), recent), 'interest');
+});
+
+// ---------------------------------------------------------------------
+// 간편 입력 되돌리기 (수정 화면)
+// ---------------------------------------------------------------------
+test('되돌리기: 간편 입력으로 만든 분개는 같은 값으로 되돌아옴 (5종)', () => {
+  const byId = indexAccounts(ACCS2);
+  const cases = [
+    ['expense', { amount: 30000, expenseId: 'food', sourceId: 'card1' }],
+    ['income', { amount: 3000000, incomeId: 'salary', depositId: 'bank1' }],
+    ['transfer', { amount: 500000, fromId: 'bank1', toId: 'savings' }],
+    ['card_payment', { amount: 330000, cardId: 'card1', fromId: 'bank1' }],
+    ['loan_repayment', { principal: 500000, interest: 50000, loanId: 'loan', interestId: 'interest', fromId: 'bank1' }],
+  ];
+  for (const [kind, v] of cases) {
+    const back = parseSimple(kind, buildSimple(kind, v).lines, byId);
+    for (const [k, val] of Object.entries(v)) eq(back?.[k], val, `${kind}.${k}`);
+  }
+});
+test('되돌리기: 모양이 다른 분개(3줄 지출 등)는 null → 고급 입력으로 수정', () => {
+  const byId = indexAccounts(ACCS2);
+  eq(parseSimple('expense', [
+    { account_id: 'food', debit: 1000, credit: 0 }, { account_id: 'food', debit: 500, credit: 0 },
+    { account_id: 'cash', debit: 0, credit: 1500 }], byId), null);
+  eq(parseSimple('manual', [{ account_id: 'food', debit: 1, credit: 0 }, { account_id: 'cash', debit: 0, credit: 1 }], byId), null);
+});
+test('되돌리기: 이자만 낸 대출 상환도 되돌아옴', () => {
+  const byId = indexAccounts(ACCS2);
+  const v = parseSimple('loan_repayment', [
+    { account_id: 'interest', debit: 50000, credit: 0 }, { account_id: 'bank1', debit: 0, credit: 50000 }], byId);
+  eq([v?.interest, v?.interestId, v?.fromId, v?.principal], [50000, 'interest', 'bank1', '']);
+});
+
+// ---------------------------------------------------------------------
+// 시산표
+// ---------------------------------------------------------------------
+const BAL = (id, name, type, parent_id, d, c, sort_order) =>
+  ({ account_id: id, name, type, parent_id, debit_total: d, credit_total: c, sort_order, is_hidden: false });
+// 1단계 시나리오 결과: 개시 → 카드 식비 3만 → 카드대금 33만
+const TB_ROWS = [
+  BAL('cash', '현금', 'asset', null, 100000, 0, 10),
+  BAL('bank', '보통예금', 'asset', null, 0, 0, 20),
+  BAL('bank1', '주거래 통장', 'asset', 'bank', 2000000, 330000, 21),
+  BAL('sav', '적금', 'asset', null, 0, 0, 30),
+  BAL('card', '신용카드', 'liability', null, 0, 0, 110),
+  BAL('card1', '주 사용 카드', 'liability', 'card', 330000, 330000, 111),
+  BAL('open', '기초 순자산', 'equity', null, 0, 1800000, 210),
+  BAL('food', '식비', 'expense', null, 30000, 0, 410),
+];
+test('시산표: 차변 합계 = 대변 합계, 차변 잔액 = 대변 잔액', () => {
+  const tb = trialBalance(TB_ROWS);
+  eq(tb.totals, { debit: 2460000, credit: 2460000, debitBalance: 1800000, creditBalance: 1800000 });
+  eq(tb.ok, true);
+});
+test('시산표: 상위 계정은 하위 합산, 합계는 이중 계산 없음', () => {
+  const tb = trialBalance(TB_ROWS);
+  const bank = tb.groups.find((g) => g.type === 'asset').rows.find((r) => r.id === 'bank');
+  eq([bank.debit, bank.credit, bank.balance, bank.isParent, bank.children.length], [2000000, 330000, 1670000, true, 1]);
+  eq(tb.groups.find((g) => g.type === 'asset').subtotal.balance, 1770000);
+});
+test('시산표: 거래 없는 계정 숨기기, 불일치 감지', () => {
+  const tb = trialBalance(TB_ROWS, { hideZero: true });
+  eq(tb.groups.find((g) => g.type === 'asset').rows.map((r) => r.name), ['현금', '보통예금']);
+  const broken = trialBalance([...TB_ROWS, BAL('x', '오류', 'expense', null, 1, 0, 999)]);
+  eq(broken.ok, false);
+});
+test('계정 잔액: 상위 계정은 하위 합산, 부채는 대변(+)', () => {
+  eq(accountTotal(TB_ROWS, 'bank'), 1670000);
+  eq(accountTotal(TB_ROWS, 'card'), 0);
+  eq(accountTotal(TB_ROWS, 'open'), 1800000);
+  eq(accountTotal(TB_ROWS, 'none'), 0);
+  eq([dayBefore('2026-01-01'), dayBefore('2024-03-01')], ['2025-12-31', '2024-02-29']);
+});
+test('기간: 이번 달·지난 달·올해 (말일·연초 경계)', () => {
+  const now = new Date(2026, 0, 15);
+  eq(periodRange('thisMonth', now), { from: '2026-01-01', to: '2026-01-31' });
+  eq(periodRange('lastMonth', now), { from: '2025-12-01', to: '2025-12-31' });
+  eq(periodRange('thisYear', now), { from: '2026-01-01', to: '2026-12-31' });
+  eq(periodRange('thisMonth', new Date(2028, 1, 10)).to, '2028-02-29');
+  eq(periodRange('all', now), { from: null, to: null });
 });
 
 /** 모든 테스트 실행 → [{name, ok, error}] */

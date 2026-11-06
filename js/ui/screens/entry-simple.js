@@ -15,25 +15,32 @@ import { validateJournal, todayLocal, isValidDate } from '../../core/journal.js'
 import { postableAccounts, indexAccounts, describeLines } from '../../core/balance.js';
 
 /**
- * @param {{ save: (payload) => Promise<boolean> }} ctx
+ * @param {{ save: (payload) => Promise<boolean>,
+ *           initial?: { id: string, kind: string, values: object, date: string, memo: string },
+ *           submitLabel?: string }} ctx
+ *   initial: 수정할 때 기존 전표 값 (이때는 종류를 바꿀 수 없고, 저장 후 입력란을 비우지 않음)
  * @returns {HTMLElement & { focusAmount: () => void }}
  */
-export function simpleForm({ save }) {
-  const all = postableAccounts(state.accounts);
+export function simpleForm({ save, initial = null, submitLabel = '저장' }) {
   const byId = indexAccounts(state.accounts);
-  let kind = prefs.get('simpleKind', 'expense');
+  // 수정 중인 전표에 숨긴 계정이 쓰였으면 그 계정도 칩으로 보여 줌
+  const keep = new Set(initial ? Object.values(initial.values) : []);
+  const all = postableAccounts(state.accounts, { includeHidden: true })
+    .filter((o) => !o.account.is_hidden && !byId.get(o.account.parent_id)?.is_hidden || keep.has(o.id));
+  let kind = initial?.kind ?? prefs.get('simpleKind', 'expense');
   if (!SIMPLE_FORMS[kind]) kind = 'expense';
 
   const values = {};             // 입력값: 금액 칸 key → 문자열, 계정 칸 key → id
-  let pendingId = crypto.randomUUID();
+  let pendingId = initial?.id ?? crypto.randomUUID();
   let amountInputs = [];
 
   const kindTabs = h('div', { class: 'segmented kinds', role: 'group', 'aria-label': '입력 종류' });
   const body = h('div', { class: 'stack-lg' });
-  const dateInput = h('input', { type: 'date', value: todayLocal(), 'aria-label': '날짜' });
-  const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '메모 (선택)', 'aria-label': '메모', enterkeyhint: 'done' });
+  const dateInput = h('input', { type: 'date', value: initial?.date ?? todayLocal(), 'aria-label': '날짜' });
+  const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '메모 (선택)', 'aria-label': '메모',
+    enterkeyhint: 'done', value: initial?.memo ?? '' });
   const preview = h('p', { class: 'small muted', 'aria-live': 'polite' });
-  const saveBtn = h('button', { class: 'btn primary block', type: 'submit' }, '저장');
+  const saveBtn = h('button', { class: 'btn primary block', type: 'submit' }, submitLabel);
   dateInput.addEventListener('input', update);
 
   const form = h('form', { class: 'stack-lg', novalidate: true },
@@ -46,7 +53,7 @@ export function simpleForm({ save }) {
   form.focusAmount = () => amountInputs[0]?.focus();
 
   drawKinds();
-  drawBody();
+  drawBody(initial?.values);
   return form;
 
   // =================================================================
@@ -55,6 +62,7 @@ export function simpleForm({ save }) {
     replace(kindTabs, SIMPLE_KINDS.map((k) => h('button', {
       type: 'button',
       'aria-pressed': String(k === kind),
+      disabled: !!initial && k !== kind,   // 수정할 때는 종류 고정
       onClick: () => {
         if (k === kind) return;
         kind = k;
@@ -72,13 +80,18 @@ export function simpleForm({ save }) {
     return sortByRecent(opts, recentUse());
   }
 
-  /** 종류에 맞는 금액 칸·계정 칩 그리기 */
-  function drawBody() {
+  /**
+   * 종류에 맞는 금액 칸·계정 칩 그리기
+   * @param {object} [init] 미리 채울 값 (수정할 때)
+   */
+  function drawBody(init) {
     const spec = SIMPLE_FORMS[kind];
     for (const key of Object.keys(values)) delete values[key];
 
     amountInputs = spec.amounts.map(({ key, label }) => {
-      const input = amountInput({ label, onChange: (_, text) => { values[key] = text; update(); } });
+      const start = Number(init?.[key]) || 0;
+      if (start) values[key] = String(start);
+      const input = amountInput({ label, value: start, onChange: (_, text) => { values[key] = text; update(); } });
       input.classList.add('big');
       return input;
     });
@@ -87,7 +100,7 @@ export function simpleForm({ save }) {
 
     const pickers = spec.pickers.map((p) => {
       const opts = optionsFor(p);
-      values[p.key] = defaultChoice(p, opts, recentUse());
+      values[p.key] = init ? (init[p.key] || '') : defaultChoice(p, opts, recentUse());
       return chipGroup({
         label: p.label,
         options: opts,
@@ -138,6 +151,7 @@ export function simpleForm({ save }) {
       lines: r.lines.map((l) => ({ ...l, memo: '' })),
     };
     const done = await withBusy(saveBtn, '저장 중…', () => save(payload));
+    if (done && initial) return;   // 수정: 화면 이동은 호출한 쪽이 처리
     if (done) {
       // 다음 입력 준비: 금액·항목은 비우고 결제수단 등(최근 사용)은 다시 미리 고름. 날짜는 유지
       pendingId = crypto.randomUUID();

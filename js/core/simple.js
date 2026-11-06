@@ -128,6 +128,45 @@ export function buildSimple(kind, f) {
   return { ok: errors.length === 0, errors, lines: errors.length ? [] : lines, total };
 }
 
+/**
+ * 저장된 분개 → 간편 입력 값 (간편 입력으로 만든 전표를 같은 화면에서 수정할 때)
+ * 분개 모양이 그 종류의 간편 입력과 정확히 같을 때만 값을 돌려주고, 아니면 null(고급 입력으로 수정)
+ * @param {string} kind
+ * @param {Array<{account_id, debit, credit}>} lines
+ * @param {Map<string, {type: string}>} byId
+ * @returns {Record<string, string|number> | null}
+ */
+export function parseSimple(kind, lines, byId) {
+  if (!SIMPLE_FORMS[kind]) return null;
+  const debits = lines.filter((l) => l.debit > 0);
+  const credits = lines.filter((l) => l.credit > 0);
+  let v = null;
+  if (kind === 'loan_repayment') {
+    if (credits.length !== 1 || !debits.length || debits.length > 2) return null;
+    const loan = debits.find((l) => byId.get(l.account_id)?.type === 'liability');
+    const interest = debits.find((l) => byId.get(l.account_id)?.type === 'expense');
+    v = { fromId: credits[0].account_id,
+          loanId: loan?.account_id ?? '', principal: loan?.debit ?? '',
+          interestId: interest?.account_id ?? '', interest: interest?.debit ?? '' };
+  } else {
+    if (debits.length !== 1 || credits.length !== 1) return null;
+    const d = debits[0].account_id;
+    const c = credits[0].account_id;
+    const amount = debits[0].debit;
+    v = {
+      expense: { expenseId: d, sourceId: c, amount },
+      income: { depositId: d, incomeId: c, amount },
+      transfer: { toId: d, fromId: c, amount },
+      card_payment: { cardId: d, fromId: c, amount },
+    }[kind];
+  }
+  // 되돌린 값으로 다시 만들어 원래 분개와 같은지 확인 (이자만 낸 대출 상환 등은 계정 칸이 비어 있을 수 있음)
+  const rebuilt = buildSimple(kind, { ...v, loanId: v.loanId || 'x', interestId: v.interestId || 'x' });
+  const norm = (ls) => ls.filter((l) => l.account_id !== 'x')
+    .map((l) => `${l.account_id}:${l.debit}:${l.credit}`).sort().join('|');
+  return rebuilt.ok && norm(rebuilt.lines) === norm(lines) ? v : null;
+}
+
 // ---------------------------------------------------------------------
 // 개시 잔액
 // ---------------------------------------------------------------------

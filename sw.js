@@ -7,7 +7,7 @@
 // (node tools/coretest.mjs 가 목록 누락을 검사합니다)
 // =====================================================================
 
-const VERSION = 'v2-3';
+const VERSION = 'v3-1';
 const CACHE = 'dh-app-' + VERSION;
 const CDN_CACHE = 'dh-cdn-1';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
@@ -27,6 +27,7 @@ const PRECACHE = [
   'js/core/balance.js',
   'js/core/journal.js',
   'js/core/money.js',
+  'js/core/reports.js',
   'js/core/simple.js',
   'js/data/api.js',
   'js/data/errors.js',
@@ -40,14 +41,19 @@ const PRECACHE = [
   'js/ui/shell.js',
   'js/ui/state.js',
   'js/ui/theme.js',
+  'js/ui/widgets.js',
   'js/ui/screens/accounts.js',
   'js/ui/screens/dashboard.js',
   'js/ui/screens/entry-advanced.js',
   'js/ui/screens/entry-simple.js',
   'js/ui/screens/entry.js',
+  'js/ui/screens/list.js',
   'js/ui/screens/opening.js',
-  'js/ui/screens/placeholder.js',
+  'js/ui/screens/report-ledger.js',
+  'js/ui/screens/report-trial.js',
+  'js/ui/screens/reports.js',
   'js/ui/screens/settings.js',
+  'js/ui/screens/txn.js',
 ];
 
 self.addEventListener('install', (event) => {
