@@ -94,6 +94,34 @@ export async function listAccounts(ledgerId) {
   );
 }
 
+/**
+ * 계정 추가
+ * @param {{ ledgerId, name, type, subtype?, parentId?, sortOrder? }} a
+ */
+export async function createAccount({ ledgerId, name, type, subtype = null, parentId = null, sortOrder = 0 }) {
+  return call(
+    supabase
+      .from('accounts')
+      .insert({ ledger_id: ledgerId, name: name.trim(), type, subtype, parent_id: parentId, sort_order: sortOrder })
+      .select('id, name, type, subtype, parent_id, is_hidden, is_system, sort_order')
+      .single(),
+  );
+}
+
+/** 계정 수정 (이름·숨김·순서) */
+export async function updateAccount(id, patch) {
+  const allowed = {};
+  if ('name' in patch) allowed.name = patch.name.trim();
+  if ('isHidden' in patch) allowed.is_hidden = patch.isHidden;
+  if ('sortOrder' in patch) allowed.sort_order = patch.sortOrder;
+  return call(supabase.from('accounts').update(allowed).eq('id', id).select('id').single());
+}
+
+/** 계정 삭제 (거래가 있거나 시스템 계정이면 DB가 거부하고 이유를 알려 줌) */
+export async function deleteAccount(id) {
+  return call(supabase.from('accounts').delete().eq('id', id));
+}
+
 // ---------------------------------------------------------------------
 // 전표
 // ---------------------------------------------------------------------

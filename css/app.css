@@ -168,6 +168,9 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--ba
 .topbar .ledger-name { font-weight: 700; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar select { min-height: 40px; width: auto; max-width: 60vw; font-weight: 700; padding: 6px 10px; }
 .net-status { font-size: 0.8rem; }
+.topbar .status { display: flex; gap: 6px; align-items: center; }
+.queue-badge { min-height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--warn);
+               background: transparent; color: var(--warn); font-size: 0.8rem; font-weight: 700; cursor: pointer; }
 
 .view {
   max-width: 640px; margin: 0 auto;
@@ -244,12 +247,41 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--ba
 .je-totals .diff.ok strong { color: var(--ok); }
 .je-errors { margin: 0; padding-left: 18px; color: var(--bad); font-size: 0.875rem; }
 
+/* ---------- 간편 입력 ---------- */
+.segmented.kinds { grid-auto-columns: minmax(64px, 1fr); overflow-x: auto; scrollbar-width: none; }
+.segmented.kinds::-webkit-scrollbar { display: none; }
+.segmented.kinds button { white-space: nowrap; padding: 0 8px; }
+input.amount.big { min-height: 60px; font-size: 1.6rem; font-weight: 700; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chip-field { gap: 8px; }
+.chip-label { font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  min-height: 44px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 0.95rem;
+}
+.chip[aria-checked="true"] { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); font-weight: 700; }
+.chip.more { color: var(--muted); border-style: dashed; }
+.preview { color: var(--text); }
+.queue { border-color: var(--warn); }
+
+/* ---------- 개시 잔액 마법사 ---------- */
+.ob-row { display: grid; grid-template-columns: 1fr 44%; gap: 8px; align-items: center; min-height: 52px; }
+.ob-row .name { overflow-wrap: anywhere; }
+.inline-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.ob-total { display: grid; gap: 6px; }
+.ob-total div { display: flex; justify-content: space-between; }
+.ob-total .net { font-size: 1.15rem; font-weight: 700; border-top: 1px solid var(--line); padding-top: 8px; }
+
 /* ---------- 계정과목 ---------- */
 .acc-group h3 { margin-bottom: 4px; }
 .acc-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; }
 .acc-item.child { padding-left: 20px; }
 .acc-item.child::before { content: "└"; color: var(--muted); margin-right: 6px; }
 .acc-item .name { flex: 1; }
+.acc-item.is-hidden .name { color: var(--muted); text-decoration: line-through; }
+.acc-editor { display: grid; gap: 8px; padding: 12px; margin: 4px 0 8px; border-radius: 12px; background: var(--surface-2); }
+.acc-editor .row { flex-wrap: wrap; }
 
 /* ---------- 대시보드 ---------- */
 .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

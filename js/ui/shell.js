@@ -9,6 +9,7 @@ import * as dashboard from './screens/dashboard.js';
 import * as entry from './screens/entry.js';
 import * as settings from './screens/settings.js';
 import * as accounts from './screens/accounts.js';
+import * as opening from './screens/opening.js';
 import { placeholder } from './screens/placeholder.js';
 
 // 탭 아이콘 (24x24 선 아이콘 경로)
@@ -37,6 +38,7 @@ const ROUTES = {
   reports: placeholder('보고서', '계정별 원장·시산표는 3단계, 재무상태표·손익계산서는 4단계에서 만듭니다.'),
   settings: settings.render,
   'settings/accounts': accounts.render,
+  opening: opening.render,
 };
 
 export const DEFAULT_ROUTE = 'dashboard';
@@ -46,10 +48,20 @@ export function currentRoute() {
   return ROUTES[r] ? r : DEFAULT_ROUTE;
 }
 
+/**
+ * 화면 이동. 버튼을 누른 그 순간(같은 이벤트 안)에 바로 그려야
+ * 휴대폰에서 금액 칸 포커스와 숫자 키패드가 뜹니다. 그래서 hashchange를 기다리지 않습니다.
+ */
 export function navigate(route) {
-  if (location.hash !== '#/' + route) location.hash = '#/' + route;
-  else renderView();
+  if (location.hash !== '#/' + route) history.pushState(null, '', '#/' + route);
+  onRoute();
 }
+
+function onRoute() {
+  markTab?.();
+  renderView();
+}
+let markTab = null;
 
 let view;
 let cleanup = null;
@@ -62,11 +74,12 @@ let unsubscribeTopbar = null;
  * @param {{ switchLedger: (id: string) => Promise<void>, reloadAccounts: () => Promise<void> }} context
  */
 export function renderShell(root, context) {
-  ctx = { ...context, navigate };
+  ctx = { ...context, navigate, refresh: renderView };
 
   const ledgerArea = h('div', { class: 'row' });
   const netStatus = h('span', { class: 'net-status badge' });
-  const topbar = h('header', { class: 'topbar' }, ledgerArea, netStatus);
+  const queueBadge = h('button', { class: 'queue-badge hidden', type: 'button', onClick: () => navigate('entry') });
+  const topbar = h('header', { class: 'topbar' }, ledgerArea, h('div', { class: 'status' }, queueBadge, netStatus));
 
   view = h('main', { class: 'view', id: 'view', tabindex: '-1' });
 
@@ -92,23 +105,27 @@ export function renderShell(root, context) {
     }
     netStatus.textContent = state.online ? '온라인' : '오프라인';
     netStatus.className = 'net-status badge ' + (state.online ? 'ok' : 'bad');
+    // 저장 대기 건수
+    const waiting = state.queue.pending + state.queue.failed;
+    queueBadge.classList.toggle('hidden', waiting === 0);
+    queueBadge.textContent = state.queue.failed ? `저장 실패 ${state.queue.failed}` : `저장 대기 ${waiting}`;
+    queueBadge.setAttribute('aria-label', `저장 대기 ${waiting}건 보기`);
   }
 
-  function markTab() {
+  markTab = () => {
     const top = currentRoute().split('/')[0];
     for (const a of tabLinks) {
       if (a.dataset.route === top) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     }
-    fab.classList.toggle('hidden', top === 'entry');
-  }
+    fab.classList.toggle('hidden', top === 'entry' || top === 'opening');
+  };
 
   drawTopbar();
   unsubscribeTopbar?.();   // 다시 로그인해 뼈대를 새로 그릴 때 이전 구독 해제
   unsubscribeTopbar = subscribe(drawTopbar);
-  window.onhashchange = () => { markTab(); renderView(); };
-  markTab();
-  renderView();
+  window.onhashchange = onRoute;   // 탭 링크·뒤로 가기
+  onRoute();
 }
 
 /** 현재 주소의 화면 그리기 (장부를 바꿨을 때도 호출) */

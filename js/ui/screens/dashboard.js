@@ -19,6 +19,12 @@ export function render(view) {
     try {
       const r = await ledgerCheck(state.ledgerId);
       replace(body,
+        r.total_debit === 0
+          ? h('section', { class: 'card stack' },
+              h('h2', {}, '처음이신가요?'),
+              h('p', { class: 'muted' }, '지금 가진 돈과 갚을 돈을 먼저 적어 두면 순자산이 바로 정확해집니다.'),
+              h('a', { class: 'btn primary block', href: '#/opening' }, '개시 잔액 설정하기'))
+          : null,
         h('section', { class: 'kpis' },
           kpi('순자산', r.net_worth),
           kpi('자산', r.assets),
@@ -33,7 +39,8 @@ export function render(view) {
             `${formatAmount(r.assets)} = ${formatAmount(r.liabilities)} + ${formatAmount(r.equity)} + ${formatAmount(r.net_income)}`)),
         h('p', { class: 'notice small' }, '이번 달 수입·지출·저축률, 순자산 추이 그래프, 예산 현황은 다음 단계에서 이곳에 추가됩니다.'));
     } catch (err) {
-      replace(body, errorBox(err.message, load));
+      replace(body, errorBox(state.online ? err.message
+        : '오프라인이라 장부 현황을 불러올 수 없습니다. 입력은 계속할 수 있고, 연결되면 자동으로 저장됩니다.', load));
     }
   }
 }

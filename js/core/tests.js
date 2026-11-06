@@ -6,6 +6,7 @@
 import { parseAmount, formatAmount, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
+import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, SIMPLE_FORMS } from './simple.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -153,6 +154,107 @@ test('날짜: 형식·실제 날짜 검사, 오늘 날짜는 현지 기준', () 
   eq(isValidDate('2026-02-30'), false);
   eq(isValidDate('2026-1-5'), false);
   eq(todayLocal(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+});
+
+// ---------------------------------------------------------------------
+// 간편 입력 → 분개
+// ---------------------------------------------------------------------
+const ACCS2 = [
+  ...ACCS,
+  { id: 'open', name: '기초 순자산', type: 'equity', subtype: 'opening', parent_id: null, sort_order: 210 },
+  { id: 'salary', name: '급여', type: 'income', parent_id: null, sort_order: 310 },
+  { id: 'loan', name: '대출', type: 'liability', subtype: 'loan', parent_id: null, sort_order: 120 },
+  { id: 'interest', name: '대출이자', type: 'expense', parent_id: null, sort_order: 500 },
+  { id: 'savings', name: '적금', type: 'asset', subtype: 'savings', parent_id: null, sort_order: 30 },
+].map((a) => ({ subtype: null, is_hidden: false, ...a }));
+ACCS2.find((a) => a.id === 'cash').subtype = 'cash';
+for (const id of ['bank', 'bank1', 'old']) ACCS2.find((a) => a.id === id).subtype = 'bank';
+for (const id of ['card', 'card1']) ACCS2.find((a) => a.id === id).subtype = 'card';
+
+const balanced = (lines) => validateJournal(lines.map((l) => ({ accountId: l.account_id, debit: l.debit, credit: l.credit }))).ok;
+
+test('간편 지출: 카드로 식비 3만 원 → 차변 식비 / 대변 카드', () => {
+  const r = buildSimple('expense', { amount: '30,000', expenseId: 'food', sourceId: 'card1' });
+  eq(r.lines, [{ account_id: 'food', debit: 30000, credit: 0 }, { account_id: 'card1', debit: 0, credit: 30000 }]);
+  eq(balanced(r.lines), true);
+});
+test('간편 수입: 급여 → 차변 통장 / 대변 급여', () => {
+  const r = buildSimple('income', { amount: 3000000, incomeId: 'salary', depositId: 'bank1' });
+  eq(r.lines, [{ account_id: 'bank1', debit: 3000000, credit: 0 }, { account_id: 'salary', debit: 0, credit: 3000000 }]);
+});
+test('간편 이체: 통장 → 적금 (차변 적금 / 대변 통장), 같은 계좌는 거부', () => {
+  const r = buildSimple('transfer', { amount: 500000, fromId: 'bank1', toId: 'savings' });
+  eq(r.lines, [{ account_id: 'savings', debit: 500000, credit: 0 }, { account_id: 'bank1', debit: 0, credit: 500000 }]);
+  eq(buildSimple('transfer', { amount: 1, fromId: 'bank1', toId: 'bank1' }).ok, false);
+});
+test('간편 카드대금: 차변 카드(부채 감소) / 대변 통장', () => {
+  const r = buildSimple('card_payment', { amount: 330000, cardId: 'card1', fromId: 'bank1' });
+  eq(r.lines, [{ account_id: 'card1', debit: 330000, credit: 0 }, { account_id: 'bank1', debit: 0, credit: 330000 }]);
+});
+test('간편 대출 상환: 원금 50만 + 이자 5만 → 차변 대출·이자 / 대변 통장 55만', () => {
+  const r = buildSimple('loan_repayment', { principal: '500,000', interest: '50,000', loanId: 'loan', interestId: 'interest', fromId: 'bank1' });
+  eq(r.lines, [
+    { account_id: 'loan', debit: 500000, credit: 0 },
+    { account_id: 'interest', debit: 50000, credit: 0 },
+    { account_id: 'bank1', debit: 0, credit: 550000 },
+  ]);
+  eq(balanced(r.lines), true);
+  // 이자만 낸 달: 원금 줄 없음
+  const onlyInterest = buildSimple('loan_repayment', { principal: '', interest: 50000, loanId: 'loan', interestId: 'interest', fromId: 'bank1' });
+  eq(onlyInterest.lines.length, 2);
+});
+test('간편 입력: 금액·계정 누락, 소수 금액은 실패', () => {
+  eq(buildSimple('expense', { amount: '', expenseId: 'food', sourceId: 'cash' }).ok, false);
+  eq(buildSimple('expense', { amount: 1000, expenseId: 'food' }).ok, false);
+  eq(buildSimple('expense', { amount: '1000.5', expenseId: 'food', sourceId: 'cash' }).ok, false);
+});
+test('간편 입력 선택지: 지출 결제수단 = 현금·통장·카드 (적금·대출 제외)', () => {
+  const opts = postableAccounts(ACCS2).filter((o) => SIMPLE_FORMS.expense.pickers[1].filter(o.account)).map((o) => o.id);
+  eq(opts, ['cash', 'bank1', 'card1']);
+  const loans = postableAccounts(ACCS2).filter((o) => SIMPLE_FORMS.loan_repayment.pickers[0].filter(o.account)).map((o) => o.id);
+  eq(loans, ['loan']);
+});
+
+// ---------------------------------------------------------------------
+// 개시 잔액
+// ---------------------------------------------------------------------
+test('개시 잔액: 현금 10만 + 통장 200만 − 카드 30만 → 기초 순자산 180만 (대변)', () => {
+  const byId = indexAccounts(ACCS2);
+  const r = buildOpening([
+    { accountId: 'cash', amount: '100,000' }, { accountId: 'bank1', amount: 2000000 },
+    { accountId: 'card1', amount: 300000 }, { accountId: 'savings', amount: '' },
+  ], 'open', byId);
+  eq([r.ok, r.assets, r.liabilities, r.netWorth], [true, 2100000, 300000, 1800000]);
+  eq(r.lines.at(-1), { account_id: 'open', debit: 0, credit: 1800000 });
+  eq(r.lines.length, 4);   // 0원 계정은 제외
+  eq(balanced(r.lines), true);
+});
+test('개시 잔액: 부채가 더 많으면 기초 순자산이 차변', () => {
+  const r = buildOpening([{ accountId: 'cash', amount: 100 }, { accountId: 'loan', amount: 1000 }], 'open', indexAccounts(ACCS2));
+  eq([r.netWorth, r.lines.at(-1)], [-900, { account_id: 'open', debit: 900, credit: 0 }]);
+  eq(balanced(r.lines), true);
+});
+test('개시 잔액: 모두 0이면 실패', () => {
+  eq(buildOpening([{ accountId: 'cash', amount: '' }], 'open', indexAccounts(ACCS2)).ok, false);
+});
+
+// ---------------------------------------------------------------------
+// 최근 사용 순서
+// ---------------------------------------------------------------------
+test('최근 사용: 최근에 쓴 계정이 앞으로, 나머지는 원래 순서', () => {
+  const opts = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  eq(sortByRecent(opts, { c: 200, a: 100 }).map((o) => o.id), ['c', 'a', 'b', 'd']);
+  eq(mostRecentId(opts, {}), 'a');
+  eq(mostRecentId(opts, { d: 5 }), 'd');
+});
+test('기본 선택: 결제수단은 최근 사용, 이자는 "대출이자" 우선, 비용 항목은 선택 안 함', () => {
+  const all = postableAccounts(ACCS2);
+  const pick = (kind, key) => SIMPLE_FORMS[kind].pickers.find((p) => p.key === key);
+  const optsFor = (p) => all.filter((o) => p.filter(o.account));
+  const recent = { food: 300, card1: 200 };
+  eq(defaultChoice(pick('expense', 'sourceId'), optsFor(pick('expense', 'sourceId')), recent), 'card1');
+  eq(defaultChoice(pick('expense', 'expenseId'), optsFor(pick('expense', 'expenseId')), recent), '');
+  eq(defaultChoice(pick('loan_repayment', 'interestId'), optsFor(pick('loan_repayment', 'interestId')), recent), 'interest');
 });
 
 /** 모든 테스트 실행 → [{name, ok, error}] */

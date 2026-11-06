@@ -55,10 +55,17 @@ export function render(view) {
         h('div', { class: 'stack', style: 'gap:4px' },
           h('span', { class: 'small muted' }, '장부 ID (보안 점검할 때 사용)'),
           h('div', { class: 'row between' }, h('code', { class: 'small', style: 'word-break:break-all' }, state.ledgerId), copyBtn)),
-        h('p', { class: 'small muted' }, '가족 초대·구성원 관리는 다음 단계에서 추가합니다.')),
+        h('p', { class: 'small muted' }, '가족 초대·구성원 관리 화면은 이후 단계에서 추가합니다.')),
 
       h('a', { class: 'card row between', href: '#/settings/accounts', style: 'text-decoration:none;color:inherit;min-height:56px' },
-        h('span', {}, '계정과목'), h('span', { class: 'muted' }, `${state.accounts.length}개 ›`)),
+        h('span', {}, '계정과목 (추가·수정·숨김)'), h('span', { class: 'muted' }, `${state.accounts.length}개 ›`)),
+      h('a', { class: 'card row between', href: '#/opening', style: 'text-decoration:none;color:inherit;min-height:56px' },
+        h('span', {}, '개시 잔액 설정'), h('span', { class: 'muted' }, '›')),
+
+      h('section', { class: 'card stack' },
+        h('h2', {}, '휴대폰 홈 화면에 추가'),
+        h('p', { class: 'small muted' },
+          '앱처럼 전체 화면으로 쓰려면 — 아이폰: Safari 공유 버튼 → "홈 화면에 추가" / 안드로이드: Chrome 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치". 인터넷이 끊겨도 앱이 열리고, 그동안 입력한 전표는 기기에 보관했다가 연결되면 저장됩니다.')),
 
       h('section', { class: 'card stack' },
         h('h2', {}, '화면'),

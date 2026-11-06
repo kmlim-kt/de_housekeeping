@@ -8,6 +8,8 @@ export const state = {
   ledgerId: null,    // 현재 장부
   accounts: [],      // 현재 장부의 계정과목
   online: navigator.onLine,
+  queue: { pending: 0, failed: 0, items: [] },   // 저장 대기열
+  offlineMode: false, // 서버 대신 기기에 저장해 둔 계정 목록으로 연 상태
 };
 
 const listeners = new Set();
@@ -27,6 +29,19 @@ export function subscribe(fn) {
 /** 현재 장부 정보 */
 export function currentLedger() {
   return state.ledgers.find((l) => l.id === state.ledgerId) ?? null;
+}
+
+/** 이 장부에서 계정별 마지막 사용 시각 { 계정id: ms } */
+export function recentUse() {
+  return prefs.get('recent.' + state.ledgerId, {});
+}
+
+/** 저장한 전표에 쓴 계정들을 "최근 사용"으로 기록 */
+export function markUsed(accountIds) {
+  const map = recentUse();
+  const now = Date.now();
+  for (const id of accountIds) map[id] = now;
+  prefs.set('recent.' + state.ledgerId, map);
 }
 
 // 기기별 설정 (테마, 마지막 장부 등). 저장소를 쓸 수 없는 환경에서도 앱은 동작해야 함

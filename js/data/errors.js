@@ -38,7 +38,7 @@ export function toKoreanMessage(error) {
   switch (error.code) {
     case '42501': return /[가-힣]/.test(msg) ? msg : '이 작업을 할 권한이 없습니다.';
     case '28000': return '로그인이 필요합니다.';
-    case '23505': return /[가-힣]/.test(msg) ? msg : '이미 같은 항목이 있습니다.';
+    case '23505': return /[가-힣]/.test(msg) ? msg : '같은 이름의 계정(또는 항목)이 이미 있습니다.';
     case '23503': return '다른 데이터가 사용 중이라 처리할 수 없습니다.';
     case 'PGRST301': return '로그인이 만료되었습니다. 다시 로그인하세요.';
     case 'PGRST202': return '서버 기능을 찾을 수 없습니다. schema.sql이 최신인지 확인하세요.';
