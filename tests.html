@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>회계 로직 테스트</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="view" style="padding-bottom:32px">
+    <h1 class="view-title">회계 로직 자동 테스트</h1>
+    <p class="muted small" style="margin-bottom:12px">
+      금액 처리·잔액 부호·분개 검증(js/core)을 이 기기 브라우저에서 확인합니다. 서버에는 접속하지 않습니다.
+      <a href="./">← 가계부로</a>
+    </p>
+    <div id="summary" class="notice" role="status">실행 중…</div>
+    <ul id="results" class="list card" style="margin-top:12px"></ul>
+  </main>
+  <script type="module">
+    import { runTests } from './js/core/tests.js';
+    const results = runTests();
+    const list = document.getElementById('results');
+    for (const r of results) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="badge ${r.ok ? 'ok' : 'bad'}">${r.ok ? '✔' : '✘'}</span> `;
+      li.append(r.name);
+      if (!r.ok) {
+        const p = document.createElement('p');
+        p.className = 'small text-bad';
+        p.textContent = r.error;
+        li.append(p);
+      }
+      list.append(li);
+    }
+    const failed = results.filter((r) => !r.ok).length;
+    const summary = document.getElementById('summary');
+    summary.className = 'notice ' + (failed ? 'bad' : 'ok');
+    summary.textContent = failed ? `${failed}건 실패 / 전체 ${results.length}건` : `✅ ${results.length}건 모두 통과`;
+  </script>
+</body>
+</html>
