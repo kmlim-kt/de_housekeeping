@@ -3,11 +3,12 @@
 // 브라우저: tests.html 열기 / PC: node tools/coretest.mjs
 // =====================================================================
 
-import { parseAmount, formatAmount, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
+import { parseAmount, formatAmount, formatCompact, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
 import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
-import { trialBalance, periodRange, accountTotal, dayBefore } from './reports.js';
+import { trialBalance, periodRange, accountTotal, dayBefore, balanceSheet, incomeStatement, savingsRate,
+  pctChange, monthRange, shiftMonth, previousMonthEnd, currentMonth } from './reports.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -39,6 +40,10 @@ test('금액: 천 단위 쉼표 표시', () => {
   eq(formatAmount(0), '0');
   eq(formatAmount(1234567), '1,234,567');
   eq(formatAmount(-30000), '-30,000');
+});
+test('금액: 그래프 축용 짧은 표시 (만·억)', () => {
+  eq([formatCompact(9000), formatCompact(350000), formatCompact(12500000), formatCompact(120000000), formatCompact(100000000), formatCompact(-3500000)],
+     ['9,000', '35만', '1,250만', '1.2억', '1억', '-350만']);
 });
 test('금액: 합계가 안전 범위를 넘으면 오류', () => {
   eq(sumAmounts([1, 2, 3]), 6);
@@ -328,6 +333,56 @@ test('계정 잔액: 상위 계정은 하위 합산, 부채는 대변(+)', () =>
   eq(accountTotal(TB_ROWS, 'open'), 1800000);
   eq(accountTotal(TB_ROWS, 'none'), 0);
   eq([dayBefore('2026-01-01'), dayBefore('2024-03-01')], ['2025-12-31', '2024-02-29']);
+});
+// ---------------------------------------------------------------------
+// 재무상태표·손익계산서
+// ---------------------------------------------------------------------
+// 2단계 시나리오 + 급여 330만(통장 300만 + 세금 30만)까지 넣은 잔액
+const FS_ROWS = [
+  ...TB_ROWS.filter((r) => r.account_id !== 'bank1'),
+  BAL('bank1', '주거래 통장', 'asset', 'bank', 5000000, 330000, 21),
+  BAL('salary', '급여', 'income', null, 0, 3300000, 310),
+  BAL('tax', '세금·사회보험', 'expense', null, 300000, 0, 510),
+];
+test('재무상태표: 자산 = 부채 + 순자산(기초 순자산 + 누적 손익)', () => {
+  const bs = balanceSheet(FS_ROWS);
+  eq(bs.totals.assets.amount, 4770000);           // 현금 10만 + 통장 467만
+  eq(bs.totals.liabilities.amount, 0);
+  eq(bs.equity.map((r) => [r.name, r.amount]), [['기초 순자산', 1800000], ['누적 손익 (수익 − 비용)', 2970000]]);
+  eq(bs.totals.equity.amount, 4770000);
+  eq([bs.netWorth, bs.ok], [4770000, true]);
+  // 0원 계정(적금, 신용카드)은 빠짐, 보통예금은 하위 합산
+  eq(bs.assets.map((r) => [r.name, r.amount]), [['현금', 100000], ['보통예금', 4670000]]);
+});
+test('재무상태표: 비교 시점(전월 말) 열', () => {
+  const prev = [BAL('cash', '현금', 'asset', null, 100000, 0, 10), BAL('open', '기초 순자산', 'equity', null, 0, 100000, 210)];
+  const bs = balanceSheet(FS_ROWS, prev);
+  eq(bs.assets.find((r) => r.name === '현금').previous, 100000);
+  eq(bs.assets.find((r) => r.name === '보통예금').previous, 0);
+  eq(bs.totals.assets.previous, 100000);
+});
+test('손익계산서: 수익 − 비용 = 당기순이익, 저축률, 전기 대비', () => {
+  const prev = [BAL('salary', '급여', 'income', null, 0, 3000000, 310), BAL('food', '식비', 'expense', null, 600000, 0, 410)];
+  const is = incomeStatement(FS_ROWS, prev);
+  eq(is.totals.income, { amount: 3300000, previous: 3000000 });
+  eq(is.totals.expense, { amount: 330000, previous: 600000 });
+  eq(is.totals.net, { amount: 2970000, previous: 2400000 });
+  eq(is.savingsRate, 90);
+  eq(is.expense.map((r) => [r.name, r.amount, r.previous]), [['식비', 30000, 600000], ['세금·사회보험', 300000, 0]]);
+});
+test('저축률·증감률: 수입 0·비교값 0이면 계산하지 않음, 적자는 음수', () => {
+  eq(savingsRate(0, 1000), null);
+  eq(savingsRate(1000000, 1200000), -20);
+  eq(savingsRate(3000000, 1000000), 66.7);
+  eq(pctChange(110, 100), 10);
+  eq(pctChange(50, 0), null);
+  eq(pctChange(-50, -100), 50);
+});
+test('월 계산: 월 범위·이동·전월 말일', () => {
+  eq(monthRange('2028-02'), { from: '2028-02-01', to: '2028-02-29' });
+  eq([shiftMonth('2026-01', -1), shiftMonth('2026-12', 1), shiftMonth('2026-03', -12)], ['2025-12', '2027-01', '2025-03']);
+  eq(previousMonthEnd('2026-03-15'), '2026-02-28');
+  eq(currentMonth(new Date(2026, 10, 7)), '2026-11');
 });
 test('기간: 이번 달·지난 달·올해 (말일·연초 경계)', () => {
   const now = new Date(2026, 0, 15);

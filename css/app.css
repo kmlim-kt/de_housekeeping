@@ -22,6 +22,8 @@
   --bad-soft: #fdecea;
   --warn: #8a6200;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 12px rgb(16 24 40 / 6%);
+  --series-1: #2a78d6;   /* 그래프 계열 1 (검증한 팔레트) */
+  --series-2: #eb6834;   /* 그래프 계열 2 */
   --radius: 14px;
   --tabbar-h: 64px;
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -47,6 +49,8 @@
     --bad-soft: #3a1d1b;
     --warn: #e5c158;
     --shadow: none;
+    --series-1: #3987e5;
+    --series-2: #d95926;
     color-scheme: dark;
   }
 }
@@ -68,6 +72,8 @@
   --bad-soft: #3a1d1b;
   --warn: #e5c158;
   --shadow: none;
+    --series-1: #3987e5;
+    --series-2: #d95926;
   color-scheme: dark;
 }
 
@@ -325,8 +331,20 @@ input.amount.big { min-height: 60px; font-size: 1.6rem; font-weight: 700; }
 
 /* ---------- 대시보드 ---------- */
 .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.kpi { display: grid; gap: 2px; }
 .kpi span { display: block; font-size: 0.8rem; color: var(--muted); }
-.kpi strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.kpi strong { font-size: 1.2rem; }
+.kpi small { font-size: 0.75rem; }
+.hero { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.chart-box { position: relative; height: 200px; }
+.table-view summary { cursor: pointer; color: var(--muted); font-size: 0.875rem; min-height: 32px; }
+.table-view table { margin-top: 8px; }
+.rank-row { display: grid; gap: 6px; padding: 10px 0; text-decoration: none; color: inherit; }
+.list.rank > li { padding: 0; }
+.rank-track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.rank-bar { height: 100%; border-radius: 4px; background: var(--series-1); }
+.st-total { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+.tb-table td a { color: inherit; }
 .check-row { display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
 
 /* ---------- 전표 카드 ---------- */

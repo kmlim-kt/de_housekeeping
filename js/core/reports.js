@@ -101,6 +101,142 @@ export function accountTotal(rows, accountId) {
   return signedBalance(own.type, debit, credit);
 }
 
+// ---------------------------------------------------------------------
+// 재무상태표·손익계산서
+// ---------------------------------------------------------------------
+
+/**
+ * 한 분류의 계정을 상위/하위로 묶어 부호 규칙 잔액으로 (상위 = 자신 + 하위 합)
+ * @param {BalanceRow[]} rows
+ * @param {string} type
+ * @returns {Array<{ id, name, amount, hidden, children: Array<{id, name, amount, hidden}> }>}
+ */
+export function rollupType(rows, type) {
+  const sorted = rows.filter((r) => r.type === type)
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'));
+  const amt = (r) => signedBalance(type, r.debit_total, r.credit_total);
+  return sorted.filter((r) => !r.parent_id).map((top) => {
+    const kids = sorted.filter((c) => c.parent_id === top.account_id);
+    return {
+      id: top.account_id, name: top.name, hidden: !!top.is_hidden,
+      amount: sumAmounts([amt(top), ...kids.map(amt)]),
+      own: kids.length ? amt(top) : 0,   // 하위가 생기기 전 상위에 직접 기록된 금액
+      children: kids.map((c) => ({ id: c.account_id, name: c.name, hidden: !!c.is_hidden, amount: amt(c) })),
+    };
+  });
+}
+
+/** 두 시점(또는 기간)의 rollup을 계정별로 나란히 (비교 열) */
+function pairRollup(cur, prev) {
+  const prevMap = new Map();
+  for (const r of prev ?? []) {
+    prevMap.set(r.id, r.amount);
+    for (const c of r.children) prevMap.set(c.id, c.amount);
+  }
+  const withPrev = (x) => ({ ...x, previous: prev ? (prevMap.get(x.id) ?? 0) : null });
+  return cur.map((r) => ({ ...withPrev(r), children: r.children.map(withPrev) }));
+}
+
+/** 0이 아닌 행만 (비교 기간에 값이 있으면 남김) */
+function nonZero(list) {
+  return list
+    .map((r) => ({ ...r, children: r.children.filter((c) => c.amount || c.previous) }))
+    .filter((r) => r.amount || r.previous);
+}
+
+const totalOf = (list, key = 'amount') => sumAmounts(list.map((r) => r[key] ?? 0));
+
+/**
+ * 재무상태표 (기준일 누계)
+ *   순자산 = 순자산 계정(기초 순자산 등) + 누적 손익(수익 − 비용, 마감하지 않은 이익잉여금)
+ * @param {BalanceRow[]} rows   account_balances(장부, null, 기준일)
+ * @param {BalanceRow[]} [prevRows] 비교 시점(예: 전월 말) — 없으면 비교 열 없음
+ */
+export function balanceSheet(rows, prevRows = null) {
+  const side = (type) => nonZero(pairRollup(rollupType(rows, type), prevRows && rollupType(prevRows, type)));
+  const profit = (rs) => {
+    const inc = rollupType(rs, 'income').reduce((s, r) => s + r.amount, 0);
+    const exp = rollupType(rs, 'expense').reduce((s, r) => s + r.amount, 0);
+    return inc - exp;
+  };
+  const assets = side('asset');
+  const liabilities = side('liability');
+  const equityAccounts = side('equity');
+  const retained = { id: 'retained', name: '누적 손익 (수익 − 비용)', amount: profit(rows),
+    previous: prevRows ? profit(prevRows) : null, children: [], computed: true };
+  const equity = [...equityAccounts, ...(retained.amount || retained.previous ? [retained] : [])];
+
+  const t = (list) => ({ amount: totalOf(list), previous: prevRows ? totalOf(list, 'previous') : null });
+  const totals = { assets: t(assets), liabilities: t(liabilities), equity: t(equity) };
+  return {
+    assets, liabilities, equity, totals,
+    netWorth: totals.assets.amount - totals.liabilities.amount,
+    // 회계 등식: 자산 = 부채 + 순자산
+    ok: totals.assets.amount === totals.liabilities.amount + totals.equity.amount,
+  };
+}
+
+/**
+ * 손익계산서 (기간)
+ * @param {BalanceRow[]} rows      account_balances(장부, 시작일, 종료일)
+ * @param {BalanceRow[]} [prevRows] 비교 기간(전월·전년)
+ */
+export function incomeStatement(rows, prevRows = null) {
+  const side = (type) => nonZero(pairRollup(rollupType(rows, type), prevRows && rollupType(prevRows, type)));
+  const income = side('income');
+  const expense = side('expense');
+  const t = (list) => ({ amount: totalOf(list), previous: prevRows ? totalOf(list, 'previous') : null });
+  const ti = t(income);
+  const te = t(expense);
+  return {
+    income, expense,
+    totals: {
+      income: ti,
+      expense: te,
+      net: { amount: ti.amount - te.amount, previous: prevRows ? ti.previous - te.previous : null },
+    },
+    savingsRate: savingsRate(ti.amount, te.amount),
+  };
+}
+
+/**
+ * 저축률(%) = (수입 − 지출) ÷ 수입 × 100, 소수 첫째 자리. 수입이 0 이하면 null(계산 불가)
+ */
+export function savingsRate(income, expense) {
+  if (!(income > 0)) return null;
+  return Math.round(((income - expense) / income) * 1000) / 10;
+}
+
+/** 증감률(%) — 비교값이 0이면 null. 소수 첫째 자리 */
+export function pctChange(current, previous) {
+  if (!previous) return null;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+}
+
+/** "YYYY-MM" → 그 달의 { from, to } */
+export function monthRange(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return { from: ymd(new Date(y, m - 1, 1)), to: ymd(new Date(y, m, 0)) };
+}
+
+/** "YYYY-MM"에서 delta개월 이동 */
+export function shiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+
+/** 오늘이 속한 달 "YYYY-MM" */
+export function currentMonth(now = new Date()) {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+}
+
+/** 어떤 날짜의 전월 말일 */
+export function previousMonthEnd(s) {
+  const [y, m] = s.split('-').map(Number);
+  return ymd(new Date(y, m - 1, 0));
+}
+
 /** 하루 전 날짜 "YYYY-MM-DD" */
 export function dayBefore(s) {
   const [y, m, d] = s.split('-').map(Number);

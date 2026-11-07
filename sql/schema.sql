@@ -1,6 +1,6 @@
 -- =====================================================================
 -- 복식부기 가계부 — Supabase(PostgreSQL) 스키마
--- 버전: 2 (2026-11-07: 거래 검색 함수 search_transactions 추가)
+-- 버전: 3 (2: 거래 검색 search_transactions, 3: 월별 요약 monthly_summary)
 --
 -- 실행 방법: Supabase 대시보드 → SQL Editor → 이 파일 전체를 붙여넣고 Run
 -- 새 프로젝트에서 한 번만 실행합니다. (다시 실행하면 "already exists" 오류가 납니다)
@@ -907,7 +907,7 @@ create or replace function public.schema_version()
 returns integer
 language sql immutable
 set search_path = ''
-as $$ select 2; $$;
+as $$ select 3; $$;
 
 
 -- =====================================================================
@@ -1147,6 +1147,65 @@ as $$
    order by f.txn_date desc, f.created_at desc, f.id
    limit least(greatest(coalesce(p_limit, 50), 1), 500)
   offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+
+-- 월별 요약: 최근 p_months개월(p_end가 속한 달까지) 각각의
+--   수입·지출(그 달 합계), 월말 자산·부채·순자산(그 달 말일까지 누계)
+-- p_end: 기준일 (기기의 오늘 날짜를 넘김 — 서버 시간대와 무관하게)
+create or replace function public.monthly_summary(
+  p_ledger_id  uuid,
+  p_months     integer default 12,
+  p_end        date    default null
+)
+returns table (
+  month        text,      -- 'YYYY-MM'
+  month_end    date,
+  income       bigint,
+  expense      bigint,
+  assets       bigint,
+  liabilities  bigint,
+  net_worth    bigint
+)
+language sql stable security invoker
+set search_path = ''
+as $$
+  with params as (
+    select date_trunc('month', coalesce(p_end, current_date))::date as last_month,
+           least(greatest(coalesce(p_months, 12), 1), 120) as n
+  ),
+  months as (
+    select (p.last_month - make_interval(months => g))::date as m
+      from params p, generate_series(0, p.n - 1) as g
+  ),
+  ln as (
+    select t.txn_date, a.type, l.debit, l.credit
+      from public.lines l
+      join public.transactions t on t.id = l.transaction_id
+      join public.accounts a     on a.id = l.account_id
+     where l.ledger_id = p_ledger_id
+       and not t.is_deleted
+  ),
+  agg as (
+    select mo.m,
+           coalesce(sum(ln.credit - ln.debit) filter (
+             where ln.type = 'income' and ln.txn_date >= mo.m and ln.txn_date < mo.m + interval '1 month'), 0) as income,
+           coalesce(sum(ln.debit - ln.credit) filter (
+             where ln.type = 'expense' and ln.txn_date >= mo.m and ln.txn_date < mo.m + interval '1 month'), 0) as expense,
+           coalesce(sum(ln.debit - ln.credit) filter (
+             where ln.type = 'asset' and ln.txn_date < mo.m + interval '1 month'), 0) as assets,
+           coalesce(sum(ln.credit - ln.debit) filter (
+             where ln.type = 'liability' and ln.txn_date < mo.m + interval '1 month'), 0) as liabilities
+      from months mo
+      left join ln on ln.txn_date < mo.m + interval '1 month'
+     group by mo.m
+  )
+  select to_char(m, 'YYYY-MM'),
+         (m + interval '1 month' - interval '1 day')::date,
+         income::bigint, expense::bigint, assets::bigint, liabilities::bigint,
+         (assets - liabilities)::bigint
+    from agg
+   order by m;
 $$;
 
 

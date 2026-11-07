@@ -116,7 +116,7 @@ async function enterApp(session, force = false) {
 }
 
 /** 이 앱이 필요로 하는 DB 버전 (sql/migrations 를 실행하면 올라감) */
-const REQUIRED_SCHEMA = 2;
+const REQUIRED_SCHEMA = 3;
 
 async function checkSchema() {
   try {

@@ -15,6 +15,8 @@ import * as txn from './screens/txn.js';
 import * as reports from './screens/reports.js';
 import * as reportLedger from './screens/report-ledger.js';
 import * as reportTrial from './screens/report-trial.js';
+import * as reportBs from './screens/report-bs.js';
+import * as reportIs from './screens/report-is.js';
 
 // 탭 아이콘 (24x24 선 아이콘 경로)
 const ICONS = {
@@ -42,6 +44,8 @@ const ROUTES = {
   reports: reports.render,
   'reports/ledger': reportLedger.render,
   'reports/trial': reportTrial.render,
+  'reports/bs': reportBs.render,
+  'reports/is': reportIs.render,
   settings: settings.render,
   'settings/accounts': accounts.render,
   opening: opening.render,

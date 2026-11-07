@@ -233,6 +233,14 @@ export async function accountLedger(accountId, from = null, to = null) {
   return call(supabase.rpc('account_ledger', { p_account_id: accountId, p_from: from, p_to: to }));
 }
 
+/**
+ * 월별 요약: 최근 months개월 각각의 수입·지출, 월말 자산·부채·순자산
+ * @param {string} end 기준일 (기기의 오늘) "YYYY-MM-DD"
+ */
+export async function monthlySummary(ledgerId, months, end) {
+  return call(supabase.rpc('monthly_summary', { p_ledger_id: ledgerId, p_months: months, p_end: end }));
+}
+
 /** DB 스키마 버전 (업데이트 SQL을 실행했는지 확인) */
 export async function schemaVersion() {
   return call(supabase.rpc('schema_version'));

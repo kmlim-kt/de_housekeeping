@@ -40,9 +40,18 @@ function T(date, memo, kind, source, lines) {
   audit.push({ id: audit.length + 1, transaction_id: id, action: 'create', before: null, after: null, changed_by: USER, changed_at: ts });
   return id;
 }
-const thisMonth = new Date().toISOString().slice(0, 8);
-T(thisMonth + '01', '개시 잔액', 'opening', 'opening',
+const pad2 = (x) => String(x).padStart(2, '0');
+const monthStr = (back) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - back); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-`; };
+const thisMonth = monthStr(0);
+// 6개월 전 개시 → 지난 5개월 동안 급여·식비·카드대금 (그래프용)
+T(monthStr(6) + '01', '개시 잔액', 'opening', 'opening',
   [['cash', 100000, 0], ['bank1', 2000000, 0], ['loan', 0, 1000000], ['card1', 0, 300000], ['open', 0, 800000]]);
+for (let back = 5; back >= 1; back--) {
+  const food = 400000 + back * 37000;
+  T(monthStr(back) + '10', '월급', 'income', 'simple', [['bank1', 3000000, 0], ['salary', 0, 3000000]]);
+  T(monthStr(back) + '15', '장보기', 'expense', 'simple', [['food', food, 0], ['card1', 0, food]]);
+  T(monthStr(back) + '25', '카드대금', 'card_payment', 'simple', [['card1', food, 0], ['bank1', 0, food]]);
+}
 T(thisMonth + '05', '점심', 'expense', 'simple', [['food', 30000, 0], ['card1', 0, 30000]]);
 T(thisMonth + '06', '카드대금', 'card_payment', 'simple', [['card1', 330000, 0], ['bank1', 0, 330000]]);
 T(thisMonth + '06', '1월 급여', 'manual', 'advanced', [['bank1', 3000000, 0], ['tax', 300000, 0], ['salary', 0, 3300000]]);
@@ -65,7 +74,31 @@ function balances(from, to) {
 }
 
 const RPC = {
-  schema_version: () => 2,
+  schema_version: () => 3,
+  monthly_summary: ({ p_months, p_end }) => {
+    const end = new Date((p_end ?? new Date().toISOString().slice(0, 10)) + 'T00:00:00');
+    const out = [];
+    for (let i = p_months - 1; i >= 0; i--) {
+      const m0 = new Date(end.getFullYear(), end.getMonth() - i, 1);
+      const m1 = new Date(end.getFullYear(), end.getMonth() - i + 1, 1);
+      const key = `${m0.getFullYear()}-${pad2(m0.getMonth() + 1)}`;
+      const lastDay = new Date(m1 - 86400000);
+      const endStr = `${lastDay.getFullYear()}-${pad2(lastDay.getMonth() + 1)}-${pad2(lastDay.getDate())}`;
+      let income = 0; let expense = 0; let assets = 0; let liabilities = 0;
+      for (const t of live()) {
+        for (const l of t.lines) {
+          const type = byId().get(l.account_id).type;
+          const inMonth = t.txn_date >= `${key}-01` && t.txn_date <= endStr;
+          if (type === 'income' && inMonth) income += l.credit - l.debit;
+          if (type === 'expense' && inMonth) expense += l.debit - l.credit;
+          if (type === 'asset' && t.txn_date <= endStr) assets += l.debit - l.credit;
+          if (type === 'liability' && t.txn_date <= endStr) liabilities += l.credit - l.debit;
+        }
+      }
+      out.push({ month: key, month_end: endStr, income, expense, assets, liabilities, net_worth: assets - liabilities });
+    }
+    return out;
+  },
   ledger_check: ({ p_as_of }) => {
     const b = balances(null, p_as_of);
     const s = (type) => b.filter((r) => r.type === type).reduce((x, r) => x + r.balance, 0);

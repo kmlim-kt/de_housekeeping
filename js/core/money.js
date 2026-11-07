@@ -37,6 +37,21 @@ export function formatAmount(n) {
   return sign + String(Math.abs(Math.trunc(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+/**
+ * 그래프 축용 짧은 표시: 9,000 / 35만 / 1,250만 / 1.2억 / -350만
+ * @param {number} n 정수
+ */
+export function formatCompact(n) {
+  const sign = n < 0 ? '-' : '';
+  const a = Math.abs(n);
+  if (a >= 100_000_000) {
+    const v = Math.round(a / 10_000_000) / 10;   // 억 단위 소수 첫째 자리
+    return sign + String(v).replace(/\.0$/, '') + '억';
+  }
+  if (a >= 10_000) return sign + formatAmount(Math.round(a / 10_000)) + '만';
+  return sign + formatAmount(a);
+}
+
 /** "30,000원" 형식 */
 export function formatWon(n) {
   return formatAmount(n) + '원';

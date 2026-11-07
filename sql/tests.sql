@@ -176,6 +176,29 @@ begin
   assert n = 3, format('❌ [검색] 급여 전표의 분개 라인 3줄 (실제 %s)', n);
 
   ------------------------------------------------------------------
+  -- 1-2. 월별 요약 (대시보드) — 2025-12 ~ 2026-01
+  --   1월: 수입 급여 330만, 지출 식비 3만 + 세금 30만 + 대출이자 5만 = 38만, 월말 순자산 472만
+  ------------------------------------------------------------------
+  select count(*) into n from public.monthly_summary(la, 2, '2026-01-15');
+  assert n = 2, format('❌ [월별 요약] 2개월이어야 함 (실제 %s)', n);
+  select income into n from public.monthly_summary(la, 2, '2026-01-15') where month = '2026-01';
+  assert n = 3300000, format('❌ [월별 요약] 1월 수입 330만 (실제 %s)', n);
+  select expense into n from public.monthly_summary(la, 2, '2026-01-15') where month = '2026-01';
+  assert n = 380000, format('❌ [월별 요약] 1월 지출 38만 (실제 %s)', n);
+  select net_worth into n from public.monthly_summary(la, 2, '2026-01-15') where month = '2026-01';
+  assert n = 4720000, format('❌ [월별 요약] 1월 말 순자산 472만 (실제 %s)', n);
+  select assets - liabilities - net_worth into n from public.monthly_summary(la, 2, '2026-01-15') where month = '2026-01';
+  assert n = 0, '❌ [월별 요약] 순자산 = 자산 − 부채';
+  select coalesce(sum(income + expense + assets + liabilities), 0) into n
+    from public.monthly_summary(la, 2, '2026-01-15') where month = '2025-12';
+  assert n = 0, '❌ [월별 요약] 거래 전 달(2025-12)은 모두 0';
+  select month_end::text into v_code from public.monthly_summary(la, 2, '2026-01-15') where month = '2026-01';
+  assert v_code = '2026-01-31', '❌ [월별 요약] 1월 말일 2026-01-31';
+  -- 2월은 거래가 없어도 순자산이 1월 말과 같아야 함 (누계)
+  select net_worth into n from public.monthly_summary(la, 1, '2026-02-10');
+  assert n = 4720000, format('❌ [월별 요약] 거래 없는 2월 말 순자산도 472만 (실제 %s)', n);
+
+  ------------------------------------------------------------------
   -- 2. 차대 검증 (RPC가 거부해야 하는 입력)
   ------------------------------------------------------------------
   failed := false;
@@ -406,6 +429,8 @@ begin
   assert n = 0, '❌ [RLS] B는 A의 월별 손익을 볼 수 없어야 함';
   select count(*) into n from public.search_transactions(la);
   assert n = 0, '❌ [RLS] B가 A 장부의 거래를 검색하면 빈 결과여야 함';
+  select coalesce(sum(income + expense + assets + liabilities), 0) into n from public.monthly_summary(la, 24, '2026-06-30');
+  assert n = 0, '❌ [RLS] B가 A 장부의 월별 요약을 보면 모두 0이어야 함';
   select count(*) into n from public.account_ledger(a_cash);
   assert n = 0, '❌ [RLS] B는 A 계정의 원장을 볼 수 없어야 함';
 
@@ -510,7 +535,7 @@ begin
   exception when others then failed := true;
   end;
   assert failed, '❌ [anon] 로그인하지 않으면 전표를 저장할 수 없어야 함';
-  assert public.schema_version() >= 2, '❌ [버전] schema_version()이 2 이상이어야 함 (DB 업데이트 2 실행 여부)';
+  assert public.schema_version() >= 3, '❌ [버전] schema_version()이 3 이상이어야 함 (DB 업데이트 002·003 실행 여부)';
   failed := false;
   begin
     perform public.search_transactions(la);

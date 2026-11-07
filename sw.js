@@ -7,10 +7,11 @@
 // (node tools/coretest.mjs 가 목록 누락을 검사합니다)
 // =====================================================================
 
-const VERSION = 'v3-1';
+const VERSION = 'v4-1';
 const CACHE = 'dh-app-' + VERSION;
 const CDN_CACHE = 'dh-cdn-1';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+const CHART_JS = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js';   // 대시보드 그래프
 
 const PRECACHE = [
   './',
@@ -36,10 +37,12 @@ const PRECACHE = [
   'js/data/sync.js',
   'js/ui/amount-input.js',
   'js/ui/auth.js',
+  'js/ui/charts.js',
   'js/ui/chips.js',
   'js/ui/dom.js',
   'js/ui/shell.js',
   'js/ui/state.js',
+  'js/ui/statement.js',
   'js/ui/theme.js',
   'js/ui/widgets.js',
   'js/ui/screens/accounts.js',
@@ -49,6 +52,8 @@ const PRECACHE = [
   'js/ui/screens/entry.js',
   'js/ui/screens/list.js',
   'js/ui/screens/opening.js',
+  'js/ui/screens/report-bs.js',
+  'js/ui/screens/report-is.js',
   'js/ui/screens/report-ledger.js',
   'js/ui/screens/report-trial.js',
   'js/ui/screens/reports.js',
@@ -61,6 +66,7 @@ self.addEventListener('install', (event) => {
     const cache = await caches.open(CACHE);
     await cache.addAll(PRECACHE.map((p) => new Request(p, { cache: 'reload' })));
     await precacheCdn(SUPABASE_JS);
+    await precacheCdn(CHART_JS);
     await self.skipWaiting();
   })());
 });
