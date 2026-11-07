@@ -236,6 +236,53 @@ export function mostRecentId(options, lastUsed = {}) {
 }
 
 /**
+ * 선택지(기록 가능한 계정)를 "상위 → 하위" 두 단계로 묶음
+ *   하위가 있는 상위: { id: 상위id, label: 상위 이름, children: [하위 선택지…] }
+ *   하위가 없는 계정: { id: 계정id, label: 이름, children: null }  (누르면 바로 선택)
+ *   순서: 상위 줄은 그 묶음에서 가장 최근에 쓴 계정 기준, 하위 줄도 최근 사용 순 (나머지는 원래 순서)
+ * @param {Array<{id: string, label: string, account: {parent_id: string|null}}>} options
+ * @param {Map<string, {name: string}>} byId 전체 계정 맵 (상위 이름 찾기)
+ * @param {Record<string, number>} lastUsed
+ */
+export function groupOptions(options, byId, lastUsed = {}) {
+  const groups = [];
+  const index = new Map();
+  for (const o of options) {
+    const parentId = o.account?.parent_id;
+    if (!parentId) {
+      groups.push({ id: o.id, label: o.label, children: null, leaf: o });
+      continue;
+    }
+    if (!index.has(parentId)) {
+      const g = { id: parentId, label: byId.get(parentId)?.name ?? o.label, children: [] };
+      index.set(parentId, g);
+      groups.push(g);
+    }
+    index.get(parentId).children.push(o);
+  }
+  const lastOf = (g) => (g.children ? Math.max(0, ...g.children.map((c) => lastUsed[c.id] ?? 0)) : lastUsed[g.id] ?? 0);
+  for (const g of groups) if (g.children) g.children = sortByRecent(g.children, lastUsed);
+  return groups
+    .map((g, i) => ({ g, i, t: lastOf(g) }))
+    .sort((a, b) => b.t - a.t || a.i - b.i)
+    .map((x) => x.g);
+}
+
+/** 계정 id → 그 계정이 들어 있는 묶음 */
+export function groupOf(groups, accountId) {
+  return groups.find((g) => (g.children ? g.children.some((c) => c.id === accountId) : g.id === accountId)) ?? null;
+}
+
+/**
+ * 하위가 있는 상위를 눌렀을 때 미리 고를 하위: 지금 고른 것이 그 묶음에 있으면 유지, 아니면 가장 최근에 쓴 하위
+ * (하위 줄은 이미 최근 사용 순으로 정렬되어 있음)
+ */
+export function childToPreselect(group, currentId) {
+  if (!group?.children?.length) return group?.id ?? '';
+  return group.children.some((c) => c.id === currentId) ? currentId : group.children[0].id;
+}
+
+/**
  * 간편 입력 칸의 기본 선택값
  *   auto가 아니면 '' (사용자가 직접 고름)
  *   prefer(예: 대출이자)가 있으면 그 이름의 계정, 없으면 최근 사용 계정

@@ -6,7 +6,8 @@
 import { parseAmount, formatAmount, formatCompact, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal, nowTimeLocal, isValidTime, formatTime, compareTransactions } from './journal.js';
-import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
+import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS,
+  groupOptions, groupOf, childToPreselect } from './simple.js';
 import { budgetReport, figures as budgetFigures } from './budget.js';
 import { toCsv, parseCsv, decodeText } from './csv.js';
 import { guessHeaderRow, guessMapping, parseDate, parseTime, parseMoney, buildEntries, suggestAccount, learnRules,
@@ -275,6 +276,28 @@ test('최근 사용: 최근에 쓴 계정이 앞으로, 나머지는 원래 순�
   eq(sortByRecent(opts, { c: 200, a: 100 }).map((o) => o.id), ['c', 'a', 'b', 'd']);
   eq(mostRecentId(opts, {}), 'a');
   eq(mostRecentId(opts, { d: 5 }), 'd');
+});
+test('두 단계 선택: 상위로 묶고, 하위 없는 계정은 바로 선택, 최근 사용 순', () => {
+  const accs = [
+    ...ACCS2,
+    { id: 'eat', name: '외식', type: 'expense', subtype: null, parent_id: 'food', sort_order: 411, is_hidden: false },
+    { id: 'grocery', name: '장보기', type: 'expense', subtype: null, parent_id: 'food', sort_order: 412, is_hidden: false },
+    { id: 'trans', name: '교통', type: 'expense', subtype: null, parent_id: null, sort_order: 430, is_hidden: false },
+  ];
+  const byId = indexAccounts(accs);
+  const opts = (filter) => postableAccounts(accs).filter((o) => filter(o.account)).map((o) => ({ id: o.id, label: o.account.name, account: o.account }));
+  // 지출 결제수단: 현금 / 보통예금(▸ 주거래 통장) / 신용카드(▸ 주 사용 카드)
+  const src = groupOptions(opts(SIMPLE_FORMS.expense.pickers[1].filter), byId);
+  eq(src.map((g) => [g.id, g.label, g.children?.map((c) => c.id) ?? null]),
+     [['cash', '현금', null], ['bank', '보통예금', ['bank1']], ['card', '신용카드', ['card1']]]);
+  // 비용: 식비(▸ 외식·장보기)가 하나의 묶음, 최근에 장보기를 썼으면 식비가 맨 앞·장보기가 하위 맨 앞
+  const exp = groupOptions(opts((a) => a.type === 'expense'), byId, { grocery: 50, trans: 10 });
+  eq(exp.map((g) => g.label), ['식비', '교통', '대출이자']);
+  eq(exp[0].children.map((c) => c.id), ['grocery', 'eat']);
+  eq(groupOf(exp, 'eat').id, 'food');
+  eq(groupOf(exp, 'trans').id, 'trans');
+  // 상위를 누르면: 지금 고른 하위가 그 묶음이면 유지, 아니면 최근 하위
+  eq([childToPreselect(exp[0], 'eat'), childToPreselect(exp[0], 'trans'), childToPreselect(exp[1], '')], ['eat', 'grocery', 'trans']);
 });
 test('기본 선택: 결제수단은 최근 사용, 이자는 "대출이자" 우선, 비용 항목은 선택 안 함', () => {
   const all = postableAccounts(ACCS2);

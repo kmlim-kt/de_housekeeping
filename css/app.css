@@ -488,3 +488,10 @@ a.card.row.between:hover, .report-link:hover { border-color: var(--line-strong);
 /* 비어 있는 영역(저장 대기·즐겨찾기 등이 없을 때)은 간격도 차지하지 않게 */
 /* (input·canvas처럼 원래 내용이 없는 요소는 제외하고, 빈 묶음 상자만) */
 .stack > div:empty, .stack-lg > div:empty, .stack > section:empty, .stack-lg > section:empty { display: none; }
+
+/* 두 단계 선택 칩: 하위 줄은 상위 줄 아래 들여 쓴 묶음으로 */
+.chip.has-sub .chip-caret { font-size: 0.8em; opacity: 0.8; }
+.sub-chips { margin-left: 10px; padding: 8px 0 2px 12px; border-left: 3px solid var(--primary); }
+.sub-chips:empty { display: none; }
+.sub-chips .chip { min-height: 40px; background: var(--surface); }
+.sub-chips .chip[aria-checked="true"] { background: var(--primary); }

@@ -4,6 +4,7 @@
 // =====================================================================
 
 import { h, replace } from './dom.js';
+import { groupOf, childToPreselect } from '../core/simple.js';
 
 /**
  * @param {{ label: string, options: Array<{id: string, label: string, title?: string}>,
@@ -36,6 +37,70 @@ export function chipGroup({ label, options, selected = '', limit = 8, onSelect }
   }
 
   box.setSelected = (id) => { current = id; draw(); };
+  draw();
+  return box;
+}
+
+/**
+ * 두 단계 선택 칩: 상위 계정 줄 → (하위가 있으면) 하위 계정 줄
+ *   하위가 없는 계정은 누르면 바로 선택
+ *   하위가 있는 상위를 누르면 하위 줄이 펼쳐지고, 최근에 쓴 하위가 미리 선택됨 (지출 3터치 유지)
+ * @param {{ label: string, groups: Array<{id, label, children: Array<{id, label, title?}>|null}>,
+ *           selected?: string, limit?: number, onSelect: (accountId: string) => void }} opts
+ *   groups: core/simple.js groupOptions 결과, selected·onSelect의 값은 실제로 기록할(하위) 계정 id
+ * @returns {HTMLElement & { setSelected: (id: string) => void }}
+ */
+export function twoLevelChips({ label, groups, selected = '', limit = 8, onSelect }) {
+  let expanded = false;
+  let current = selected;
+  let openGroup = groupOf(groups, selected);   // 하위 줄을 펼쳐 둔 상위 묶음
+  const top = h('div', { class: 'chips', role: 'radiogroup', 'aria-label': label });
+  const sub = h('div', { class: 'chips sub-chips', role: 'radiogroup' });
+  const box = h('div', { class: 'stack chip-field' }, h('div', { class: 'chip-label' }, label), top, sub);
+
+  function choose(id) {
+    current = id;
+    draw();
+    onSelect(id);
+  }
+
+  function draw() {
+    const selGroup = groupOf(groups, current);
+    const idx = groups.findIndex((g) => g === selGroup);
+    const showAll = expanded || groups.length <= limit + 1 || idx >= limit;
+    const visible = showAll ? groups : groups.slice(0, limit);
+    replace(top,
+      visible.map((g) => h('button', {
+        type: 'button',
+        class: 'chip' + (g.children ? ' has-sub' : ''),
+        role: 'radio',
+        'aria-checked': String(g === selGroup),
+        'aria-expanded': g.children ? String(g === openGroup) : null,
+        title: g.children ? `${g.label} — 세부 항목 고르기` : (g.leaf?.title ?? g.label),
+        onClick: () => {
+          if (!g.children) { openGroup = null; choose(g.id); return; }
+          openGroup = g;
+          choose(childToPreselect(g, current));
+        },
+      }, g.label, g.children ? h('span', { class: 'chip-caret', 'aria-hidden': 'true' }, g === openGroup ? ' ▾' : ' ▸') : null)),
+      !showAll ? h('button', { type: 'button', class: 'chip more', onClick: () => { expanded = true; draw(); } },
+        `더보기 (${groups.length - limit})`) : null,
+      groups.length === 0 ? h('span', { class: 'small muted' }, '고를 수 있는 계정이 없습니다. 설정 → 계정과목에서 추가하세요.') : null);
+
+    // 하위 줄: 펼친 상위 묶음의 하위 계정들
+    if (openGroup?.children) {
+      sub.setAttribute('aria-label', `${openGroup.label} 세부 항목`);
+      replace(sub, openGroup.children.map((c) => h('button', {
+        type: 'button', class: 'chip', role: 'radio',
+        'aria-checked': String(c.id === current), title: c.title ?? c.label,
+        onClick: () => choose(c.id),
+      }, c.label)));
+    } else {
+      replace(sub);
+    }
+  }
+
+  box.setSelected = (id) => { current = id; openGroup = groupOf(groups, id); draw(); };
   draw();
   return box;
 }

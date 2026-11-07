@@ -3,14 +3,15 @@
 //   지출 / 수입 / 이체 / 카드대금 / 대출 상환
 //   휴대폰에서 지출 3터치: [+ 입력] → (금액 입력) → 항목 칩 → [저장]
 //   결제수단 등은 최근에 쓴 계정을 미리 골라 둡니다.
+//   계정 칩은 상위 계정 → 하위 계정 두 단계 (하위가 있는 상위를 누르면 최근 쓴 하위가 미리 선택)
 // 분개 변환은 core/simple.js가 하고, 이 파일은 화면만 다룹니다.
 // =====================================================================
 
 import { h, replace, withBusy, toast } from '../dom.js';
 import { amountInput } from '../amount-input.js';
-import { chipGroup } from '../chips.js';
+import { twoLevelChips } from '../chips.js';
 import { state, recentUse, prefs } from '../state.js';
-import { SIMPLE_FORMS, SIMPLE_KINDS, buildSimple, sortByRecent, defaultChoice } from '../../core/simple.js';
+import { SIMPLE_FORMS, SIMPLE_KINDS, buildSimple, sortByRecent, defaultChoice, groupOptions } from '../../core/simple.js';
 import { validateJournal, todayLocal, isValidDate, nowTimeLocal, isValidTime, formatTime } from '../../core/journal.js';
 import { postableAccounts, indexAccounts, describeLines } from '../../core/balance.js';
 import { parseAmount } from '../../core/money.js';
@@ -176,9 +177,10 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
     const pickers = spec.pickers.map((p) => {
       const opts = optionsFor(p);
       values[p.key] = init ? (init[p.key] || '') : defaultChoice(p, opts, recentUse());
-      return chipGroup({
+      // 상위 계정 줄 → 하위 계정 줄 (하위가 있는 상위를 누르면 최근 쓴 하위가 미리 선택됨)
+      return twoLevelChips({
         label: p.label,
-        options: opts,
+        groups: groupOptions(opts, byId, recentUse()),
         selected: values[p.key],
         limit: p.auto ? 4 : 8,
         onSelect: (id) => { values[p.key] = id; update(); },
