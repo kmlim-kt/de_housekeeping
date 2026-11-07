@@ -1,13 +1,13 @@
 // =====================================================================
 // 앱 아이콘(PNG) 생성: node tools/make-icons.mjs
-// 파란 바탕에 흰 "=" (차변 = 대변). 외부 라이브러리 없이 PNG를 직접 만듭니다.
+// 테라코타 바탕에 크림색 "=" (차변 = 대변). 외부 라이브러리 없이 PNG를 직접 만듭니다.
 // =====================================================================
 
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-const BG = [0x24, 0x59, 0xd6];   // --primary
-const FG = [0xff, 0xff, 0xff];
+const BG = [0xA9, 0x50, 0x2A];   // --primary (테라코타)
+const FG = [0xFF, 0xFC, 0xF8];   // --surface (크림)
 
 /** 둥근 사각형 안에 있는지 (0~1 좌표) */
 function inRoundRect(x, y, x0, y0, x1, y1, r) {

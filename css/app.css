@@ -1,30 +1,34 @@
 /* =====================================================================
    복식부기 가계부 — 스타일
    모바일 우선, 라이트/다크(자동 + 수동 전환), 터치 영역 최소 44px
+   웜톤 디자인: 영역은 카드 테두리·제목 띠·묶음 띠로 구분 (docs/design-preview.html 시안)
    ===================================================================== */
 
-/* ---------- 색상 토큰 ---------- */
+/* ---------- 색상 토큰 (웜톤) ----------
+   따뜻한 오프화이트 바탕 + 크림 카드 + 테라코타 강조
+   글자 색은 모두 바탕 대비 4.5:1 이상, 그래프 2색은 색각이상 구분 검사 통과(라이트·다크 각각) */
 :root {
-  --bg: #f4f5f7;
-  --surface: #ffffff;
-  --surface-2: #eef0f3;
-  --text: #1b2130;
-  --muted: #5f6878;
-  --line: #dfe3e8;
-  --primary: #2459d6;
-  --primary-ink: #ffffff;
-  --primary-soft: #e6edfc;
-  --debit: #0f6e8c;      /* 차변 */
-  --credit: #9a4b00;     /* 대변 */
-  --ok: #137a48;
-  --ok-soft: #e3f4ea;
-  --bad: #b42318;
-  --bad-soft: #fdecea;
-  --warn: #8a6200;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 12px rgb(16 24 40 / 6%);
-  --series-1: #2a78d6;   /* 그래프 계열 1 (검증한 팔레트) */
-  --series-2: #eb6834;   /* 그래프 계열 2 */
-  --radius: 14px;
+  --bg: #F6F1EA;          /* 바탕 */
+  --surface: #FFFCF8;     /* 카드·상단 바·탭 바 */
+  --surface-2: #F2EBE2;   /* 묶음 띠·입력 보조 바탕 */
+  --text: #2A221D;
+  --muted: #6F6259;
+  --line: #E2D6C8;        /* 카드 테두리·줄 구분 */
+  --line-strong: #CDBEAD; /* 상단 바·탭 바 경계, 입력칸 테두리 */
+  --primary: #A9502A;     /* 테라코타 */
+  --primary-ink: #FFFFFF;
+  --primary-soft: #F5E3D8;
+  --debit: #2D6873;       /* 차변 */
+  --credit: #94540F;      /* 대변 */
+  --ok: #3A7229;
+  --ok-soft: #E6EFDC;
+  --bad: #B23A2E;
+  --bad-soft: #F7E1DC;
+  --warn: #8A5A00;
+  --shadow: 0 1px 0 rgb(60 40 20 / 4%), 0 2px 10px rgb(60 40 20 / 6%);
+  --series-1: #C25E33;   /* 그래프 계열 1 (테라코타) */
+  --series-2: #0086A0;   /* 그래프 계열 2 (청록) */
+  --radius: 16px;
   --tabbar-h: 64px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
@@ -32,48 +36,50 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #101318;
-    --surface: #1a1f27;
-    --surface-2: #232a34;
-    --text: #e8ebf0;
-    --muted: #9aa3b1;
-    --line: #2d3540;
-    --primary: #7aa2ff;
-    --primary-ink: #0b1220;
-    --primary-soft: #1f2c4a;
-    --debit: #5cc8e6;
-    --credit: #ffb066;
-    --ok: #4cc38a;
-    --ok-soft: #173326;
-    --bad: #ff8a80;
-    --bad-soft: #3a1d1b;
-    --warn: #e5c158;
+    --bg: #1A1613;
+    --surface: #24201C;
+    --surface-2: #2E2823;
+    --text: #F2EAE1;
+    --muted: #B5A799;
+    --line: #3A322B;
+    --line-strong: #4B4138;
+    --primary: #E58A60;
+    --primary-ink: #1A1613;
+    --primary-soft: #3F2B20;
+    --debit: #7CC0CB;
+    --credit: #E7AC63;
+    --ok: #8CC57A;
+    --ok-soft: #22301C;
+    --bad: #F08A7E;
+    --bad-soft: #3A221E;
+    --warn: #E5C158;
     --shadow: none;
-    --series-1: #3987e5;
-    --series-2: #d95926;
+    --series-1: #CF6A3F;
+    --series-2: #00939F;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #101318;
-  --surface: #1a1f27;
-  --surface-2: #232a34;
-  --text: #e8ebf0;
-  --muted: #9aa3b1;
-  --line: #2d3540;
-  --primary: #7aa2ff;
-  --primary-ink: #0b1220;
-  --primary-soft: #1f2c4a;
-  --debit: #5cc8e6;
-  --credit: #ffb066;
-  --ok: #4cc38a;
-  --ok-soft: #173326;
-  --bad: #ff8a80;
-  --bad-soft: #3a1d1b;
-  --warn: #e5c158;
+  --bg: #1A1613;
+  --surface: #24201C;
+  --surface-2: #2E2823;
+  --text: #F2EAE1;
+  --muted: #B5A799;
+  --line: #3A322B;
+  --line-strong: #4B4138;
+  --primary: #E58A60;
+  --primary-ink: #1A1613;
+  --primary-soft: #3F2B20;
+  --debit: #7CC0CB;
+  --credit: #E7AC63;
+  --ok: #8CC57A;
+  --ok-soft: #22301C;
+  --bad: #F08A7E;
+  --bad-soft: #3A221E;
+  --warn: #E5C158;
   --shadow: none;
-    --series-1: #3987e5;
-    --series-2: #d95926;
+  --series-1: #CF6A3F;
+  --series-2: #00939F;
   color-scheme: dark;
 }
 
@@ -84,7 +90,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font: 16px/1.55 "Pretendard Variable", Pretendard, system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  letter-spacing: -0.01em;
   -webkit-tap-highlight-color: transparent;
 }
 h1, h2, h3 { margin: 0; line-height: 1.3; }
@@ -381,3 +388,103 @@ input.amount.big { min-height: 60px; font-size: 1.6rem; font-weight: 700; }
 @media (min-width: 720px) {
   .kpis { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* =====================================================================
+   웜톤 디자인 — 영역 구분·가독성 (위의 기본 규칙을 덮어씀)
+   ===================================================================== */
+
+/* 입력칸·버튼 */
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], input[type="time"],
+input[type="search"], select, textarea { border-color: var(--line-strong); }
+input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+.btn { border-color: var(--line-strong); font-weight: 700; }
+.btn.primary { box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 25%, transparent); }
+.btn.block.primary { min-height: 52px; font-size: 1rem; font-weight: 800; }
+
+/* 상단 바·탭 바: 바탕과 확실히 구분되는 띠 */
+.topbar { background: var(--surface); backdrop-filter: none; border-bottom: 1px solid var(--line-strong);
+          padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: 12px; }
+.topbar .ledger-name { font-weight: 800; letter-spacing: -0.02em; }
+.net-status { font-weight: 700; }
+.tabbar { border-top: 1px solid var(--line-strong); }
+.tabbar a { font-weight: 600; }
+.tabbar a svg { width: 44px; height: 28px; padding: 2px 10px; border-radius: 14px; }
+.tabbar a[aria-current="page"] { font-weight: 800; }
+.tabbar a[aria-current="page"] svg { background: var(--primary-soft); }
+.fab { font-weight: 800; box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+
+/* 제목 */
+.view-title { font-weight: 800; letter-spacing: -0.02em; font-size: 1.35rem; }
+h2 { letter-spacing: -0.01em; }
+
+/* 카드 제목 띠: 카드 맨 위의 제목 줄을 아래 선으로 나누고 왼쪽에 강조 막대 */
+.card > h2:first-child,
+.card > .row:first-child:has(> h2) {
+  margin: -16px -16px 2px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+.card > h2:first-child,
+.card > .row:first-child > h2 {
+  display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700;
+}
+.card > h2:first-child::before,
+.card > .row:first-child > h2::before {
+  content: ""; flex: none; width: 4px; height: 16px; border-radius: 2px; background: var(--primary);
+}
+.card > .row:first-child:has(> h2) a { font-size: 0.82rem; font-weight: 700; text-decoration: none; }
+
+/* 묶음 띠: 거래 목록의 날짜, 시산표·계정과목의 분류 */
+.card:has(> .list > li.day-head), .card.tb-cards, .card:has(.tb-cards) { overflow: hidden; }
+.card .list > li.day-head {
+  margin: 0 -16px; padding: 8px 16px; background: var(--surface-2);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-size: 0.8rem; font-weight: 700; color: var(--muted);
+}
+.card .list > li.day-head:first-child { margin-top: -16px; border-top: 0; }
+.card .list > li.day-head + li { border-top: 0; }
+.tb-cards > .row {
+  margin: 0 -16px; padding: 8px 16px !important; background: var(--surface-2);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.tb-cards > .row:first-child { margin-top: -16px; border-top: 0; }
+.tb-cards > .row h3 { font-size: 0.88rem; font-weight: 800; }
+.tb-cards .tb-card { border-top-color: var(--line); }
+.tb-cards > .row + .tb-card, .tb-cards > .row + div > .tb-card:first-child { border-top: 0; }
+.tb-table th { font-size: 0.8rem; color: var(--muted); font-weight: 700; background: var(--surface-2); }
+.tb-table tr.group td { font-weight: 800; }
+
+/* 대시보드 숫자 칸·큰 숫자 */
+.kpi span { font-weight: 600; }
+.kpi strong { font-weight: 800; letter-spacing: -0.02em; font-size: 1.25rem; }
+.hero { font-weight: 800; letter-spacing: -0.03em; font-size: 2rem; }
+
+/* 입력 */
+.segmented { border: 1px solid var(--line); }
+.chip { background: var(--surface-2); border-color: var(--line); }
+.chip-label { font-weight: 700; font-size: 0.92rem; }
+input.amount.big { font-weight: 800; letter-spacing: -0.02em; border: 1.5px solid var(--line-strong); }
+input.amount.big:focus { border-color: var(--primary); }
+.je-summary { border-color: var(--line-strong); }
+.je-summary .preview, .je-summary p.small {
+  padding: 8px 12px; border-radius: 10px; background: var(--surface-2); border-left: 3px solid var(--primary);
+}
+.je-line { border-color: var(--line); background: var(--surface); box-shadow: var(--shadow); }
+
+/* 전표 카드 */
+.txn strong { font-weight: 700; }
+.amount-strong { font-weight: 800; }
+.txn .lines .debit, .txn .lines .credit { font-weight: 600; }
+
+/* 배지·안내 */
+.badge { font-weight: 700; }
+.notice { border: 1px solid var(--line); }
+.notice.ok { border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.notice.bad { border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+.toast { font-weight: 600; }
+
+/* 설정 메뉴 줄 */
+a.card.row.between { font-weight: 600; }
+a.card.row.between:hover, .report-link:hover { border-color: var(--line-strong); }
+
+/* 비어 있는 영역(저장 대기·즐겨찾기 등이 없을 때)은 간격도 차지하지 않게 */
+/* (input·canvas처럼 원래 내용이 없는 요소는 제외하고, 빈 묶음 상자만) */
+.stack > div:empty, .stack-lg > div:empty, .stack > section:empty, .stack-lg > section:empty { display: none; }

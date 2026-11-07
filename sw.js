@@ -7,11 +7,12 @@
 // (node tools/coretest.mjs 가 목록 누락을 검사합니다)
 // =====================================================================
 
-const VERSION = 'v7-1';
+const VERSION = 'v8-1';
 const CACHE = 'dh-app-' + VERSION;
 const CDN_CACHE = 'dh-cdn-1';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 const CHART_JS = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js';   // 대시보드 그래프
+const FONT_CSS = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css';   // 글꼴 (글자 파일은 쓰일 때 보관)
 
 const PRECACHE = [
   './',
@@ -82,6 +83,7 @@ self.addEventListener('install', (event) => {
     await cache.addAll(PRECACHE.map((p) => new Request(p, { cache: 'reload' })));
     await precacheCdn(SUPABASE_JS);
     await precacheCdn(CHART_JS);
+    await precacheCdn(FONT_CSS);
     await self.skipWaiting();
   })());
 });

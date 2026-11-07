@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>웜톤 디자인 시안</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* =====================================================================
+   웜톤 디자인 시안 — 승인되면 css/app.css 에 같은 토큰으로 적용
+   ===================================================================== */
+:root {
+  --bg: #F6F1EA;          /* 바탕: 따뜻한 오프화이트 */
+  --surface: #FFFCF8;     /* 카드 */
+  --surface-2: #F2EBE2;   /* 묶음 머리·입력칸 바탕 */
+  --line: #E2D6C8;        /* 카드 테두리 */
+  --line-strong: #CDBEAD; /* 구역 나눔선 */
+  --text: #2A221D;
+  --muted: #6F6259;
+  --primary: #A9502A;     /* 테라코타 */
+  --primary-ink: #FFFFFF;
+  --primary-soft: #F5E3D8;
+  --debit: #2D6873;       /* 차변 */
+  --credit: #94540F;      /* 대변 */
+  --ok: #3A7229;  --ok-soft: #E6EFDC;
+  --bad: #B23A2E; --bad-soft: #F7E1DC;
+  --warn-soft: #F8EBCB;
+  --series-1: #C25E33; --series-2: #0086A0;
+  --shadow: 0 1px 0 rgb(60 40 20 / 4%), 0 2px 10px rgb(60 40 20 / 6%);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #1A1613; --surface: #24201C; --surface-2: #2E2823; --line: #3A322B; --line-strong: #4B4138;
+  --text: #F2EAE1; --muted: #B5A799; --primary: #E58A60; --primary-ink: #1A1613; --primary-soft: #3F2B20;
+  --debit: #7CC0CB; --credit: #E7AC63; --ok: #8CC57A; --ok-soft: #22301C; --bad: #F08A7E; --bad-soft: #3A221E;
+  --warn-soft: #3A3020; --series-1: #CF6A3F; --series-2: #00939F; --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.55 "Pretendard Variable", Pretendard, system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: -0.01em; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 0.82rem; }
+
+/* ---------- 시안 페이지 머리 ---------- */
+.intro { max-width: 1240px; margin: 0 auto; padding: 28px 16px 8px; }
+.intro h1 { margin: 0 0 6px; font-size: 1.5rem; }
+.intro p { margin: 0 0 14px; color: var(--muted); }
+.toggle { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }
+.toggle button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 6px; }
+.sw { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 0.82rem; }
+.sw i { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgb(0 0 0 / 8%); }
+.points { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.9rem; }
+
+/* ---------- 휴대폰 틀 ---------- */
+.phones { max-width: 1240px; margin: 0 auto; padding: 18px 16px 48px; display: grid; gap: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.phone-wrap h2 { margin: 0 0 8px; font-size: 0.95rem; color: var(--muted); font-weight: 600; }
+.phone { position: relative; height: 700px; overflow: hidden; border-radius: 28px; border: 1px solid var(--line-strong);
+  background: var(--bg); box-shadow: 0 10px 30px rgb(60 40 20 / 12%); display: flex; flex-direction: column; }
+.screen { flex: 1; overflow: hidden; padding: 14px 14px 90px; display: grid; gap: 14px; align-content: start; grid-auto-rows: max-content; }
+
+/* 상단 바: 확실히 구분되는 흰 띠 */
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--line-strong); }
+.topbar b { font-size: 1.05rem; font-weight: 800; letter-spacing: -0.02em; }
+.pill { font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.page-title { margin: 2px 2px 0; font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
+
+/* 카드: 테두리 + 그림자 + 머리 구역 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+.card-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); background: linear-gradient(var(--surface), var(--surface)); }
+.card-head h3 { margin: 0; font-size: 0.98rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.card-head h3::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--primary); }
+.card-head a { font-size: 0.8rem; color: var(--primary); font-weight: 600; text-decoration: none; }
+.card-body { padding: 14px 16px; display: grid; gap: 10px; }
+
+.kpis { display: grid; grid-template-columns: 1fr 1fr; }
+.kpi { padding: 12px 16px; display: grid; gap: 2px; }
+.kpi:nth-child(odd) { border-right: 1px solid var(--line); }
+.kpi:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+.kpi span { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+.kpi strong { font-size: 1.22rem; font-weight: 800; letter-spacing: -0.02em; }
+.kpi small { font-size: 0.74rem; color: var(--muted); }
+.up { color: var(--ok); } .down { color: var(--bad); }
+.hero { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+.chart { height: 120px; }
+.meter { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 5px; background: var(--series-1); }
+.badge { font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.badge.warn { background: var(--warn-soft); color: var(--text); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* 입력 */
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 4px; gap: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }
+.seg span { text-align: center; min-height: 38px; display: grid; place-items: center; border-radius: 9px; font-weight: 600; font-size: 0.88rem; color: var(--muted); }
+.seg span.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.amount { min-height: 60px; border: 1.5px solid var(--primary); border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: flex-end; padding: 0 16px; font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; }
+.label { font-size: 0.86rem; font-weight: 700; margin-bottom: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 40px; padding: 0 14px; display: grid; place-items: center; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 0.9rem; }
+.chip.on { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 700; }
+.field { display: grid; gap: 4px; }
+.field span { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+.input { min-height: 46px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); display: flex; align-items: center; padding: 0 12px; font-size: 0.95rem; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.preview { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 0.84rem; border-left: 3px solid var(--primary); }
+.btn { min-height: 52px; border-radius: 12px; display: grid; place-items: center; background: var(--primary); color: var(--primary-ink); font-weight: 800; font-size: 1rem; }
+
+/* 목록 */
+.day { display: flex; justify-content: space-between; padding: 8px 16px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+.day:first-child { border-top: 0; }
+.txn { padding: 12px 16px; display: grid; gap: 4px; }
+.txn + .txn { border-top: 1px solid var(--line); }
+.txn .top { display: flex; justify-content: space-between; align-items: baseline; }
+.txn .top b { font-weight: 700; }
+.txn .top strong { font-weight: 800; }
+.line { display: flex; justify-content: space-between; font-size: 0.86rem; }
+.tag { font-size: 0.7rem; font-weight: 800; padding: 1px 6px; border-radius: 5px; margin-right: 6px; }
+.tag.d { color: var(--debit); background: color-mix(in srgb, var(--debit) 12%, transparent); }
+.tag.c { color: var(--credit); background: color-mix(in srgb, var(--credit) 12%, transparent); }
+.meta { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--muted); }
+
+/* 시산표 */
+.tb-total { display: grid; grid-template-columns: 1fr 1fr; }
+.tb-total div { padding: 12px 16px; display: grid; gap: 2px; }
+.tb-total div + div { border-left: 1px solid var(--line); }
+.group-h { display: flex; justify-content: space-between; padding: 8px 16px; background: var(--surface-2); font-weight: 800; font-size: 0.86rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.acc { padding: 10px 16px; display: grid; gap: 2px; }
+.acc + .acc { border-top: 1px solid var(--line); }
+.acc.child { padding-left: 30px; background: color-mix(in srgb, var(--surface-2) 40%, transparent); }
+
+/* 하단 탭 바 */
+.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 66px; display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line-strong); }
+.tab { display: grid; place-items: center; align-content: center; gap: 2px; font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+.tab i { width: 40px; height: 26px; border-radius: 13px; display: grid; place-items: center; font-style: normal; font-size: 1rem; }
+.tab.on { color: var(--primary); font-weight: 800; }
+.tab.on i { background: var(--primary-soft); }
+.fab { position: absolute; right: 14px; bottom: 80px; height: 52px; padding: 0 20px; border-radius: 26px; display: grid; place-items: center;
+  background: var(--primary); color: var(--primary-ink); font-weight: 800; box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+</style>
+</head>
+<body>
+<section class="intro">
+  <h1>웜톤 디자인 시안</h1>
+  <p>따뜻한 베이지 바탕 + 테라코타 강조색 · 카드마다 머리 구역과 테두리로 영역을 확실히 나누고 · Pretendard 글꼴로 가독성을 높였습니다. 실제 앱 화면을 이 디자인으로 그린 예시입니다(숫자는 예시).</p>
+  <div class="toggle" role="group" aria-label="테마">
+    <button type="button" aria-pressed="true" data-t="light">라이트</button>
+    <button type="button" aria-pressed="false" data-t="dark">다크</button>
+  </div>
+  <div class="swatches">
+    <span class="sw"><i style="background:var(--bg)"></i>바탕</span>
+    <span class="sw"><i style="background:var(--surface)"></i>카드</span>
+    <span class="sw"><i style="background:var(--surface-2)"></i>구역 머리</span>
+    <span class="sw"><i style="background:var(--primary)"></i>강조(테라코타)</span>
+    <span class="sw"><i style="background:var(--debit)"></i>차변</span>
+    <span class="sw"><i style="background:var(--credit)"></i>대변</span>
+    <span class="sw"><i style="background:var(--series-1)"></i>그래프 1</span>
+    <span class="sw"><i style="background:var(--series-2)"></i>그래프 2</span>
+  </div>
+  <ul class="points">
+    <li>모든 글자 색은 바탕 대비 4.5:1 이상(읽기 쉬움 기준), 그래프 2색은 색각이상 구분 검사 통과</li>
+    <li>영역 구분: 흰 상단 바·하단 탭 바에 진한 경계선, 카드 = 테두리 + 옅은 그림자 + 제목 구역(왼쪽 강조 막대), 날짜·분류 묶음은 베이지 띠</li>
+    <li>글꼴: Pretendard(한글 가독성 높은 무료 글꼴, CDN·오프라인 보관). 숫자는 자리 맞춤</li>
+    <li>기능·배치는 지금과 같고 색·글꼴·간격·구역 표시만 바뀝니다</li>
+  </ul>
+</section>
+
+<section class="phones">
+  <!-- ① 대시보드 -->
+  <div class="phone-wrap"><h2>① 대시보드</h2>
+    <div class="phone">
+      <div class="topbar"><b>우리집 가계부</b><span class="pill ok">온라인</span></div>
+      <div class="screen">
+        <div class="page-title">대시보드</div>
+        <div class="card">
+          <div class="card-head"><h3>11월 현황</h3><a>손익계산서 ›</a></div>
+          <div class="kpis">
+            <div class="kpi"><span>수입</span><strong class="num">3,300,000</strong><small><span class="up">▲ 10%</span> 전월 대비</small></div>
+            <div class="kpi"><span>지출</span><strong class="num">380,000</strong><small><span class="down">▼ 13%</span> 전월 대비</small></div>
+            <div class="kpi"><span>저축</span><strong class="num">2,920,000</strong><small>수입 − 지출</small></div>
+            <div class="kpi"><span>저축률</span><strong>88.5%</strong><small>저축 ÷ 수입</small></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>순자산</h3><a>재무상태표 ›</a></div>
+          <div class="card-body">
+            <div class="hero num">16,165,000원</div>
+            <div class="small muted">전월 말 대비 <span class="up">▲ +2,920,000원</span></div>
+            <svg class="chart" viewBox="0 0 300 120" preserveAspectRatio="none" aria-label="순자산 추이 예시">
+              <g stroke="var(--line)" stroke-width="1"><line x1="0" y1="30" x2="300" y2="30"/><line x1="0" y1="65" x2="300" y2="65"/><line x1="0" y1="100" x2="300" y2="100"/></g>
+              <polyline fill="none" stroke="var(--series-1)" stroke-width="2.5" stroke-linejoin="round"
+                points="0,100 30,100 60,100 90,100 120,99 150,92 180,78 210,64 240,50 270,36 300,22"/>
+            </svg>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>11월 예산</h3><a>예산 ›</a></div>
+          <div class="card-body">
+            <div class="row num"><span>385,000 / 535,000원</span><span class="badge ok">✔ 여유</span></div>
+            <div class="meter"><i style="width:72%"></i></div>
+            <div class="row small"><span>식비</span><span class="badge warn">⚠ 주의 85.7%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="fab">+ 입력</div>
+      <div class="tabbar"><div class="tab on"><i>⌂</i>대시보드</div><div class="tab"><i>＋</i>입력</div><div class="tab"><i>☰</i>거래목록</div><div class="tab"><i>▥</i>보고서</div><div class="tab"><i>⚙</i>설정</div></div>
+    </div>
+  </div>
+
+  <!-- ② 간편 입력 -->
+  <div class="phone-wrap"><h2>② 입력 (간편 입력)</h2>
+    <div class="phone">
+      <div class="topbar"><b>우리집 가계부</b><span class="pill ok">온라인</span></div>
+      <div class="screen">
+        <div class="seg"><span class="on">간편 입력</span><span>고급 입력 (분개)</span></div>
+        <div class="seg"><span class="on">지출</span><span>수입</span><span>이체</span><span>카드대금</span></div>
+        <div class="card"><div class="card-body">
+          <div class="field"><span>금액</span><div class="amount num">12,000</div></div>
+        </div></div>
+        <div>
+          <div class="label">무엇에 썼나요?</div>
+          <div class="chips"><span class="chip on">식비</span><span class="chip">교통</span><span class="chip">통신</span><span class="chip">여가</span><span class="chip">의료</span></div>
+        </div>
+        <div>
+          <div class="label">어디서 나갔나요?</div>
+          <div class="chips"><span class="chip on">주 사용 카드</span><span class="chip">현금</span><span class="chip">주거래 통장</span></div>
+        </div>
+        <div class="card"><div class="card-body">
+          <div class="two">
+            <div class="field"><span>날짜</span><div class="input num">2026-11-07</div></div>
+            <div class="field"><span>시각</span><div class="input num">18:19</div></div>
+          </div>
+          <div class="field"><span>메모</span><div class="input muted">메모 (선택)</div></div>
+        </div></div>
+        <div class="preview">이렇게 기록됩니다: <b style="color:var(--debit)">차변</b> 식비 12,000 / <b style="color:var(--credit)">대변</b> 주 사용 카드 12,000</div>
+        <div class="btn">저장</div>
+      </div>
+      <div class="tabbar"><div class="tab"><i>⌂</i>대시보드</div><div class="tab on"><i>＋</i>입력</div><div class="tab"><i>☰</i>거래목록</div><div class="tab"><i>▥</i>보고서</div><div class="tab"><i>⚙</i>설정</div></div>
+    </div>
+  </div>
+
+  <!-- ③ 거래 목록 -->
+  <div class="phone-wrap"><h2>③ 거래 목록</h2>
+    <div class="phone">
+      <div class="topbar"><b>우리집 가계부</b><span class="pill ok">온라인</span></div>
+      <div class="screen">
+        <div class="row"><div class="page-title">거래 목록</div><span class="badge">CSV</span></div>
+        <div class="seg"><span class="on">최신순 ↓</span><span>오래된순 ↑</span></div>
+        <div class="card">
+          <div class="day"><span>2026-11-07 (토)</span><span class="num">29,500</span></div>
+          <div class="txn">
+            <div class="top"><b>저녁 식사</b><strong class="num">25,000</strong></div>
+            <div class="line"><span><span class="tag d">차변</span>식비</span><span class="num">25,000</span></div>
+            <div class="line"><span><span class="tag c">대변</span>신용카드 › 주 사용 카드</span><span class="num">25,000</span></div>
+            <div class="meta"><span>지출</span><span class="num">21:30</span></div>
+          </div>
+          <div class="txn">
+            <div class="top"><b>아침 커피</b><strong class="num">4,500</strong></div>
+            <div class="line"><span><span class="tag d">차변</span>식비</span><span class="num">4,500</span></div>
+            <div class="line"><span><span class="tag c">대변</span>현금</span><span class="num">4,500</span></div>
+            <div class="meta"><span>지출</span><span class="num">08:05</span></div>
+          </div>
+          <div class="day"><span>2026-11-06 (금)</span><span class="num">3,630,000</span></div>
+          <div class="txn">
+            <div class="top"><b>11월 급여</b><strong class="num">3,300,000</strong></div>
+            <div class="line"><span><span class="tag d">차변</span>보통예금 › 주거래 통장</span><span class="num">3,000,000</span></div>
+            <div class="line"><span><span class="tag d">차변</span>세금·사회보험</span><span class="num">300,000</span></div>
+            <div class="line"><span><span class="tag c">대변</span>급여</span><span class="num">3,300,000</span></div>
+            <div class="meta"><span>직접 분개</span><span>시각 없음</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="fab">+ 입력</div>
+      <div class="tabbar"><div class="tab"><i>⌂</i>대시보드</div><div class="tab"><i>＋</i>입력</div><div class="tab on"><i>☰</i>거래목록</div><div class="tab"><i>▥</i>보고서</div><div class="tab"><i>⚙</i>설정</div></div>
+    </div>
+  </div>
+
+  <!-- ④ 시산표 -->
+  <div class="phone-wrap"><h2>④ 보고서 (시산표)</h2>
+    <div class="phone">
+      <div class="topbar"><b>우리집 가계부</b><span class="pill ok">온라인</span></div>
+      <div class="screen">
+        <div class="page-title">시산표</div>
+        <div class="card">
+          <div class="card-head"><h3>차변·대변 일치</h3><span class="badge ok">✔ 정상</span></div>
+          <div class="tb-total">
+            <div><span class="small muted">차변 합계</span><strong class="num" style="color:var(--debit)">6,310,000</strong></div>
+            <div><span class="small muted">대변 합계</span><strong class="num" style="color:var(--credit)">6,310,000</strong></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="group-h"><span>자산</span><span class="num">4,220,000</span></div>
+          <div class="acc"><div class="row"><span>현금</span><strong class="num">100,000</strong></div><div class="row small muted num"><span>차 100,000 · 대 0</span><span>차변 잔액</span></div></div>
+          <div class="acc"><div class="row"><span>▼ 보통예금</span><strong class="num">4,120,000</strong></div><div class="row small muted num"><span>차 5,000,000 · 대 880,000</span><span>차변 잔액</span></div></div>
+          <div class="acc child"><div class="row"><span>주거래 통장</span><span class="num">4,120,000</span></div></div>
+          <div class="group-h"><span>부채</span><span class="num">500,000</span></div>
+          <div class="acc"><div class="row"><span>대출</span><strong class="num">500,000</strong></div><div class="row small muted num"><span>차 500,000 · 대 1,000,000</span><span>대변 잔액</span></div></div>
+          <div class="group-h"><span>수익</span><span class="num">3,300,000</span></div>
+          <div class="acc"><div class="row"><span>급여</span><strong class="num">3,300,000</strong></div></div>
+        </div>
+      </div>
+      <div class="fab">+ 입력</div>
+      <div class="tabbar"><div class="tab"><i>⌂</i>대시보드</div><div class="tab"><i>＋</i>입력</div><div class="tab"><i>☰</i>거래목록</div><div class="tab on"><i>▥</i>보고서</div><div class="tab"><i>⚙</i>설정</div></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // 라이트/다크 전환 (시안 확인용)
+  document.querySelectorAll('.toggle button').forEach((b) => b.addEventListener('click', () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    document.querySelectorAll('.toggle button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+</script>
+</body>
+</html>
