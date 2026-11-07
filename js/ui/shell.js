@@ -17,6 +17,9 @@ import * as reportLedger from './screens/report-ledger.js';
 import * as reportTrial from './screens/report-trial.js';
 import * as reportBs from './screens/report-bs.js';
 import * as reportIs from './screens/report-is.js';
+import * as reportBudget from './screens/report-budget.js';
+import * as recurring from './screens/recurring.js';
+import * as favorites from './screens/favorites.js';
 
 // 탭 아이콘 (24x24 선 아이콘 경로)
 const ICONS = {
@@ -46,6 +49,10 @@ const ROUTES = {
   'reports/trial': reportTrial.render,
   'reports/bs': reportBs.render,
   'reports/is': reportIs.render,
+  'reports/budget': reportBudget.render,
+  'settings/recurring': recurring.renderList,
+  'settings/recurring/new': (view, c) => recurring.renderEditor(view, c, null),
+  'settings/favorites': favorites.render,
   settings: settings.render,
   'settings/accounts': accounts.render,
   opening: opening.render,
@@ -55,6 +62,8 @@ const ROUTES = {
 const PATTERNS = [
   [/^txn\/([0-9a-f-]{36})$/, (view, c, [id]) => txn.renderDetail(view, c, id)],
   [/^txn\/([0-9a-f-]{36})\/edit$/, (view, c, [id]) => txn.renderEdit(view, c, id)],
+  [/^settings\/recurring\/([0-9a-f-]{36})$/, (view, c, [id]) => recurring.renderEditor(view, c, id)],
+  [/^recurring-post\/([0-9a-f-]{36})$/, (view, c, [id]) => recurring.renderPost(view, c, id)],
 ];
 
 export const DEFAULT_ROUTE = 'dashboard';
@@ -147,7 +156,7 @@ export function renderShell(root, context) {
   markTab = () => {
     const route = currentRoute();
     // 전표 상세는 거래목록 탭에 속함
-    const top = route.startsWith('txn/') ? 'list' : route.split('/')[0];
+    const top = route.startsWith('txn/') ? 'list' : route.startsWith('recurring-post/') ? 'entry' : route.split('/')[0];
     for (const a of tabLinks) {
       if (a.dataset.route === top) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');

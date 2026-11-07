@@ -344,6 +344,31 @@ input.amount.big { min-height: 60px; font-size: 1.6rem; font-weight: 700; }
 .rank-track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
 .rank-bar { height: 100%; border-radius: 4px; background: var(--series-1); }
 .st-total { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+
+/* ---------- 예산 ---------- */
+:root { --status-ok: #0ca30c; --status-warn: #fab219; --status-over: #d03b3b; }   /* 상태 색 (아이콘·글자와 함께만 사용) */
+.meter { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 5px; background: var(--series-1); }
+.meter-fill.status-warn { background: var(--status-warn); }
+.meter-fill.status-over { background: var(--status-over); }
+.badge.status-ok { background: var(--ok-soft); color: var(--ok); }
+.badge.status-warn { background: color-mix(in srgb, var(--status-warn) 22%, transparent); color: var(--text); }
+.badge.status-over { background: var(--bad-soft); color: var(--bad); }
+.budget-row { display: grid; gap: 6px; }
+.budget-row.child { padding-left: 14px; }
+.budget-head { display: grid; grid-template-columns: 1fr 9.5rem; gap: 8px; align-items: center; }
+.budget-head input { min-height: 44px; }
+.budget-status { display: grid; gap: 4px; }
+
+/* ---------- 반복 거래·즐겨찾기 ---------- */
+.due { border-color: var(--series-1); }
+.due-item { display: grid; gap: 6px; }
+.due-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.fav-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.fav-row::-webkit-scrollbar { display: none; }
+.fav-row .chip { white-space: nowrap; }
+.rec-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0; text-decoration: none; color: inherit; }
+.rec-item.inactive { opacity: 0.55; }
 .tb-table td a { color: inherit; }
 .check-row { display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
 

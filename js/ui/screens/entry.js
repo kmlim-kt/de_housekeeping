@@ -10,11 +10,12 @@ import { advancedForm } from './entry-advanced.js';
 import { KIND_LABELS } from '../../core/journal.js';
 import { indexAccounts, describeLines } from '../../core/balance.js';
 import { transactionCard } from '../widgets.js';
+import { recurringDue } from '../recurring-due.js';
 import { formatAmount } from '../../core/money.js';
-import { listRecentTransactions } from '../../data/api.js';
+import { listRecentTransactions, createFavorite } from '../../data/api.js';
 import { submitTransaction, flush, retry, discard } from '../../data/sync.js';
 
-export function render(view) {
+export function render(view, ctx) {
   const byId = indexAccounts(state.accounts);
   let mode = prefs.get('entryMode', 'simple');
 
@@ -25,7 +26,8 @@ export function render(view) {
 
   append(view,
     h('h1', { class: 'sr-only' }, '입력'),
-    h('div', { class: 'stack-lg' }, modeSwitch, queueBox, formBox,
+    h('div', { class: 'stack-lg' }, recurringDue({ navigate: ctx.navigate, onChange: () => loadRecent() }),
+      modeSwitch, queueBox, formBox,
       h('section', { class: 'stack' }, h('h2', {}, '최근 전표'), recentBox)));
 
   drawMode();
@@ -43,7 +45,9 @@ export function render(view) {
           type: 'button', 'aria-pressed': String(mode === m),
           onClick: () => { if (mode !== m) { mode = m; prefs.set('entryMode', m); drawMode(); } },
         }, label)));
-    const form = mode === 'simple' ? simpleForm({ save }) : advancedForm({ save });
+    const form = mode === 'simple'
+      ? simpleForm({ save, favorites: state.favorites, onSaveFavorite: saveFavorite })
+      : advancedForm({ save });
     replace(formBox, form);
     // 금액 칸에 바로 커서 (휴대폰은 숫자 키패드가 뜸)
     if (mode === 'simple') requestAnimationFrame(() => form.focusAmount());
@@ -65,6 +69,20 @@ export function render(view) {
       return true;
     } catch (err) {
       toast(err.message, { type: 'error', duration: 6000 });
+      return false;
+    }
+  }
+
+  /** 간편 입력 내용을 즐겨찾기로 저장 */
+  async function saveFavorite(name, template) {
+    try {
+      await createFavorite(state.ledgerId, name, template, state.favorites.length);
+      await ctx.reloadFavorites();
+      toast(`"${name.trim()}" 즐겨찾기를 저장했습니다. 입력 화면 맨 위에서 누르면 채워집니다.`);
+      drawMode();   // 즐겨찾기 줄 다시 그리기
+      return true;
+    } catch (err) {
+      toast(state.online ? err.message : '즐겨찾기 저장은 인터넷 연결이 필요합니다.', { type: 'error' });
       return false;
     }
   }

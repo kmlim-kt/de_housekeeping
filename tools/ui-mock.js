@@ -140,8 +140,10 @@ const RPC = {
     return rows.slice(p.p_offset, p.p_offset + p.p_limit)
       .map((t) => ({ ...t, total: total(t), lines: t.lines, total_count: rows.length }));
   },
+  skip_recurring: ({ p_id, p_date }) => advanceRecurring(p_id, p_date),
   create_transaction: (p) => {
     if (txns.some((t) => t.id === p.p_id)) return p.p_id;
+    if (p.p_recurring_id) advanceRecurring(p.p_recurring_id, p.p_recurring_date);
     const ts = new Date().toISOString();
     txns.push({ id: p.p_id, ledger_id: LEDGER, txn_date: p.p_date, memo: p.p_memo, kind: p.p_kind, source: p.p_source,
       is_deleted: false, deleted_at: null, created_at: ts, updated_at: ts, created_by: USER, updated_by: USER,
@@ -172,20 +174,52 @@ const RPC = {
   },
 };
 
-/** supabase.from(...) 흉내: eq 필터만 처리, await 하면 결과 */
+// 단순 테이블 (예산·반복 거래·즐겨찾기)
+const tables = { budgets: [], recurring: [], favorites: [] };
+
+/** supabase.from(...) 흉내: eq 필터 + select/insert/update/upsert/delete, await 하면 결과 */
 function fromMock(table) {
   const f = {};
   let single = false;
   let limit = Infinity;
+  let op = 'select';
+  let payload = null;
+  let conflict = null;
+  const match = (row) => Object.entries(f).every(([k, v]) => row[k] === v);
   const chain = {
-    select: () => chain, order: () => chain, insert: () => chain, update: () => chain, delete: () => chain,
+    select: () => chain,
+    order: () => chain,
+    insert: (p) => { op = 'insert'; payload = p; return chain; },
+    update: (p) => { op = 'update'; payload = p; return chain; },
+    upsert: (p, o) => { op = 'upsert'; payload = p; conflict = o?.onConflict?.split(','); return chain; },
+    delete: () => { op = 'delete'; return chain; },
     eq: (col, val) => { f[col] = val; return chain; },
     limit: (k) => { limit = k; return chain; },
     maybeSingle: () => { single = true; return chain; },
     single: () => { single = true; return chain; },
     then: (resolve) => {
       let data = [];
-      if (table === 'transactions') {
+      const store = tables[table];
+      if (store && op !== 'select') {
+        const rows = Array.isArray(payload) ? payload : [payload];
+        if (op === 'insert') {
+          data = rows.map((r) => ({ id: uuid(), created_at: new Date().toISOString(), sort_order: 0, is_active: true, ...r }));
+          store.push(...data);
+        } else if (op === 'update') {
+          data = store.filter(match);
+          data.forEach((r) => Object.assign(r, payload));
+        } else if (op === 'upsert') {
+          for (const r of rows) {
+            const hit = store.find((x) => conflict.every((k) => x[k] === r[k]));
+            if (hit) Object.assign(hit, r); else store.push({ id: uuid(), ...r });
+          }
+        } else if (op === 'delete') {
+          for (const r of store.filter(match)) store.splice(store.indexOf(r), 1);
+        }
+      } else if (store) {
+        data = store.filter(match).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+          || String(a.next_date ?? '').localeCompare(String(b.next_date ?? '')));
+      } else if (table === 'transactions') {
         data = txns.filter((t) => (!f.id || t.id === f.id) && (f.is_deleted === undefined || t.is_deleted === f.is_deleted))
           .sort((x, y) => y.txn_date.localeCompare(x.txn_date) || y.created_at.localeCompare(x.created_at)).slice(0, limit);
       } else if (table === 'audit_log') {
@@ -200,6 +234,22 @@ function fromMock(table) {
   return chain;
 }
 
+/** DB의 private.next_occurrence 와 같은 계산 (모의용) */
+function nextOcc(date, freq, n, day) {
+  const [y, m, d] = date.split('-').map(Number);
+  if (freq === 'weekly') { const t = new Date(y, m - 1, d + 7 * n); return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`; }
+  const b = new Date(y, m - 1 + (freq === 'monthly' ? n : 12 * n), 1);
+  const last = new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate();
+  return `${b.getFullYear()}-${pad2(b.getMonth() + 1)}-${pad2(Math.min(day ?? d, last))}`;
+}
+function advanceRecurring(id, date) {
+  const r = tables.recurring.find((x) => x.id === id);
+  if (!r || r.next_date !== date) throw { message: '이미 등록했거나 건너뛴 반복 거래입니다.', code: '40001' };
+  r.next_date = nextOcc(r.next_date, r.freq, r.interval_n, r.day_of_month);
+  if (r.end_date && r.next_date > r.end_date) r.is_active = false;
+  return r.next_date;
+}
+
 export async function startMock(route = 'list') {
   const { supabase } = await import('/js/data/supabase.js');
   const { setState } = await import('/js/ui/state.js');
@@ -212,12 +262,20 @@ export async function startMock(route = 'list') {
     }
   };
   supabase.from = fromMock;
+  // 예산·반복 거래 예시: 식비 50만(초과 직전 상황), 통신비 매월 5일(이번 달 예정일 지남)
+  const ym = new Date().toISOString().slice(0, 7);
+  tables.budgets.push({ id: uuid(), ledger_id: LEDGER, account_id: acc.food, month: ym, amount: 35000 },
+    { id: uuid(), ledger_id: LEDGER, account_id: acc.tax, month: ym, amount: 500000 });
+  tables.recurring.push({ id: uuid(), ledger_id: LEDGER, name: '통신비', freq: 'monthly', interval_n: 1, day_of_month: 5,
+    start_date: thisMonth + '05', end_date: null, next_date: thisMonth + '05', is_active: true, created_at: new Date().toISOString(),
+    template: { mode: 'simple', kind: 'expense', values: { amount: '55000', expenseId: acc.food, sourceId: acc.bank1 }, memo: '통신비' } });
   setState({ user: { id: USER, email: 'mock@example.com' }, ledgers: [{ id: LEDGER, name: '모의 장부', role: 'owner' }],
-    ledgerId: LEDGER, accounts, offlineMode: false });
+    ledgerId: LEDGER, accounts, favorites: [], offlineMode: false });
   history.replaceState(null, '', '#/' + route);
   renderShell(document.getElementById('app'), {
     switchLedger: async () => {},
     reloadAccounts: async () => setState({ accounts: [...accounts] }),
+    reloadFavorites: async () => setState({ favorites: structuredClone(tables.favorites.slice().sort((a, b) => a.sort_order - b.sort_order)) }),
   });
-  return { acc, txns, accounts, audit };
+  return { acc, txns, accounts, audit, tables };
 }

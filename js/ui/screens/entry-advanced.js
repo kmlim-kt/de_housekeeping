@@ -21,7 +21,7 @@ const emptyLine = () => ({ accountId: '', debit: '', credit: '' });
  *   initial: 수정할 때 기존 전표 (저장 후 입력란을 비우지 않음)
  * @returns {HTMLElement}
  */
-export function advancedForm({ save, initial = null, submitLabel = '저장' }) {
+export function advancedForm({ save, initial = null, submitLabel = '저장', hideDate = false }) {
   const options = postableAccounts(state.accounts);
   const postable = new Set(postableAccounts(state.accounts, { includeHidden: true }).map((a) => a.id));
   const byId = indexAccounts(state.accounts);
@@ -58,7 +58,7 @@ export function advancedForm({ save, initial = null, submitLabel = '저장' }) {
 
   const form = h('form', { class: 'stack', novalidate: true },
     h('div', { class: 'card stack' },
-      h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
+      hideDate ? null : h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
       h('label', { class: 'field' }, h('span', {}, '메모'), memoInput)),
     h('div', { class: 'row between' },
       h('h2', {}, '분개'),

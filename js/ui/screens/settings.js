@@ -59,6 +59,12 @@ export function render(view) {
 
       h('a', { class: 'card row between', href: '#/settings/accounts', style: 'text-decoration:none;color:inherit;min-height:56px' },
         h('span', {}, '계정과목 (추가·수정·숨김)'), h('span', { class: 'muted' }, `${state.accounts.length}개 ›`)),
+      h('a', { class: 'card row between', href: '#/settings/recurring', style: 'text-decoration:none;color:inherit;min-height:56px' },
+        h('span', {}, '반복 거래 (월세·통신비·급여)'), h('span', { class: 'muted' }, '›')),
+      h('a', { class: 'card row between', href: '#/settings/favorites', style: 'text-decoration:none;color:inherit;min-height:56px' },
+        h('span', {}, '즐겨찾기'), h('span', { class: 'muted' }, `${state.favorites.length}개 ›`)),
+      h('a', { class: 'card row between', href: '#/reports/budget', style: 'text-decoration:none;color:inherit;min-height:56px' },
+        h('span', {}, '예산'), h('span', { class: 'muted' }, '›')),
       h('a', { class: 'card row between', href: '#/opening', style: 'text-decoration:none;color:inherit;min-height:56px' },
         h('span', {}, '개시 잔액 설정'), h('span', { class: 'muted' }, '›')),
 

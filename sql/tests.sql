@@ -70,6 +70,17 @@ begin
   select id into a_house       from public.accounts where ledger_id = la and name = '주거·관리비';
 
   ------------------------------------------------------------------
+  -- 0-1. 다음 예정일 계산 (앱 화면의 js/core/recurring.js 와 같은 결과여야 함)
+  ------------------------------------------------------------------
+  assert private.next_occurrence('2026-01-31', 'monthly', 1, 31) = '2026-02-28', '❌ [예정일] 1/31 → 2/28';
+  assert private.next_occurrence('2026-02-28', 'monthly', 1, 31) = '2026-03-31', '❌ [예정일] 2/28 → 3/31';
+  assert private.next_occurrence('2026-04-30', 'monthly', 1, 31) = '2026-05-31', '❌ [예정일] 4/30 → 5/31';
+  assert private.next_occurrence('2026-01-25', 'monthly', 2, 25) = '2026-03-25', '❌ [예정일] 2개월마다';
+  assert private.next_occurrence('2028-02-29', 'yearly', 1, 29) = '2029-02-28', '❌ [예정일] 윤년 2/29 → 평년 2/28';
+  assert private.next_occurrence('2026-12-28', 'weekly', 1, null) = '2027-01-04', '❌ [예정일] 매주 연말 넘김';
+  assert private.next_occurrence('2026-01-10', 'monthly', 1, null) = '2026-02-10', '❌ [예정일] 날짜 지정 없음';
+
+  ------------------------------------------------------------------
   -- 사용자 A로 로그인
   ------------------------------------------------------------------
   perform set_config('request.jwt.claims',
@@ -390,6 +401,16 @@ begin
   v_date := public.skip_recurring(v_rec, '2026-02-28');
   assert v_date = '2026-03-31', '❌ [반복] 2/28 건너뛰면 다음은 3/31이어야 함 (실제 ' || v_date || ')';
 
+  -- 종료일을 넘기면 자동으로 비활성
+  update public.recurring set end_date = '2026-04-15' where id = v_rec;
+  perform public.skip_recurring(v_rec, '2026-03-31');
+  select is_active::int into n from public.recurring where id = v_rec;
+  assert n = 0, '❌ [반복] 다음 예정일(4/30)이 종료일(4/15)을 넘으면 비활성이어야 함';
+
+  -- 즐겨찾기
+  insert into public.favorites (ledger_id, name, template)
+  values (la, '점심 카드', jsonb_build_object('mode', 'simple', 'kind', 'expense'));
+
   ------------------------------------------------------------------
   -- 6. RLS 보안: A는 전표를 직접 쓸 수 없음
   ------------------------------------------------------------------
@@ -423,6 +444,24 @@ begin
   assert n = 0, '❌ [RLS] B는 A의 이력을 볼 수 없어야 함';
   select count(*) into n from public.budgets where ledger_id = la;
   assert n = 0, '❌ [RLS] B는 A의 예산을 볼 수 없어야 함';
+  select count(*) into n from public.recurring where ledger_id = la;
+  assert n = 0, '❌ [RLS] B는 A의 반복 거래를 볼 수 없어야 함';
+  select count(*) into n from public.favorites where ledger_id = la;
+  assert n = 0, '❌ [RLS] B는 A의 즐겨찾기를 볼 수 없어야 함';
+  failed := false;
+  begin
+    insert into public.favorites (ledger_id, name, template) values (la, '침입', '{}');
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [RLS] B는 A의 장부에 즐겨찾기를 만들 수 없어야 함';
+  failed := false;
+  begin
+    perform public.skip_recurring(v_rec, '2026-04-30');
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [RLS] B는 A의 반복 거래를 건너뛸 수 없어야 함';
+  update public.budgets set amount = 1 where ledger_id = la;
+  delete from public.recurring where ledger_id = la;
   select count(*) into n from public.account_balances(la);
   assert n = 0, '❌ [RLS] B가 A 장부의 잔액을 조회하면 빈 결과여야 함';
   select count(*) into n from public.v_monthly_pnl where ledger_id = la;
@@ -482,6 +521,10 @@ begin
   assert n = 1, '❌ [RLS] B는 A의 장부를 삭제할 수 없어야 함';
   select name into v_code from public.accounts where id = a_cash;
   assert v_code = '현금', '❌ [RLS] A의 계정 이름이 바뀌지 않아야 함';
+  select amount into n from public.budgets where ledger_id = la;
+  assert n = 300000, '❌ [RLS] B가 A의 예산을 바꿀 수 없어야 함';
+  select count(*) into n from public.recurring where ledger_id = la;
+  assert n = 1, '❌ [RLS] B가 A의 반복 거래를 지울 수 없어야 함';
 
   v_code := public.create_invite(la, 'test-b@example.com');
 

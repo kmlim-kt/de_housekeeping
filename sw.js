@@ -7,7 +7,7 @@
 // (node tools/coretest.mjs 가 목록 누락을 검사합니다)
 // =====================================================================
 
-const VERSION = 'v4-1';
+const VERSION = 'v5-1';
 const CACHE = 'dh-app-' + VERSION;
 const CDN_CACHE = 'dh-cdn-1';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
@@ -26,8 +26,10 @@ const PRECACHE = [
   'icons/favicon-32.png',
   'js/app.js',
   'js/core/balance.js',
+  'js/core/budget.js',
   'js/core/journal.js',
   'js/core/money.js',
+  'js/core/recurring.js',
   'js/core/reports.js',
   'js/core/simple.js',
   'js/data/api.js',
@@ -37,9 +39,11 @@ const PRECACHE = [
   'js/data/sync.js',
   'js/ui/amount-input.js',
   'js/ui/auth.js',
+  'js/ui/budget-view.js',
   'js/ui/charts.js',
   'js/ui/chips.js',
   'js/ui/dom.js',
+  'js/ui/recurring-due.js',
   'js/ui/shell.js',
   'js/ui/state.js',
   'js/ui/statement.js',
@@ -50,8 +54,11 @@ const PRECACHE = [
   'js/ui/screens/entry-advanced.js',
   'js/ui/screens/entry-simple.js',
   'js/ui/screens/entry.js',
+  'js/ui/screens/favorites.js',
   'js/ui/screens/list.js',
   'js/ui/screens/opening.js',
+  'js/ui/screens/recurring.js',
+  'js/ui/screens/report-budget.js',
   'js/ui/screens/report-bs.js',
   'js/ui/screens/report-is.js',
   'js/ui/screens/report-ledger.js',

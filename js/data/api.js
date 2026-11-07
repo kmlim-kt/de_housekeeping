@@ -130,7 +130,7 @@ export async function deleteAccount(id) {
  * 전표 저장 (RPC create_transaction)
  * id는 기기에서 미리 만든 UUID — 같은 id로 다시 보내도 중복 저장되지 않습니다.
  */
-export async function createTransaction({ id, ledgerId, date, memo, kind, source, lines }) {
+export async function createTransaction({ id, ledgerId, date, memo, kind, source, lines, recurringId = null, recurringDate = null }) {
   return call(
     supabase.rpc('create_transaction', {
       p_id: id,
@@ -140,8 +140,100 @@ export async function createTransaction({ id, ledgerId, date, memo, kind, source
       p_kind: kind,
       p_source: source,
       p_lines: lines,
+      // 반복 거래에서 등록: 예정일이 맞는지 DB가 확인하고 다음 예정일로 넘김 (두 기기 중복 등록 방지)
+      p_recurring_id: recurringId,
+      p_recurring_date: recurringDate,
     }),
   );
+}
+
+// ---------------------------------------------------------------------
+// 예산
+// ---------------------------------------------------------------------
+
+/** 그 달("YYYY-MM")의 예산 */
+export async function listBudgets(ledgerId, month) {
+  return call(supabase.from('budgets').select('id, account_id, month, amount').eq('ledger_id', ledgerId).eq('month', month));
+}
+
+/** 예산 저장 (금액 0이면 삭제) */
+export async function saveBudget(ledgerId, accountId, month, amount) {
+  if (!amount) {
+    return call(supabase.from('budgets').delete().eq('ledger_id', ledgerId).eq('account_id', accountId).eq('month', month));
+  }
+  return call(supabase.from('budgets')
+    .upsert({ ledger_id: ledgerId, account_id: accountId, month, amount }, { onConflict: 'ledger_id,account_id,month' }));
+}
+
+/** 다른 달의 예산을 이 달로 복사 (이미 있는 계정은 덮어씀) */
+export async function copyBudgets(ledgerId, fromMonth, toMonth) {
+  const src = await listBudgets(ledgerId, fromMonth);
+  if (!src.length) return 0;
+  await call(supabase.from('budgets').upsert(
+    src.map((b) => ({ ledger_id: ledgerId, account_id: b.account_id, month: toMonth, amount: b.amount })),
+    { onConflict: 'ledger_id,account_id,month' }));
+  return src.length;
+}
+
+// ---------------------------------------------------------------------
+// 반복 거래
+// ---------------------------------------------------------------------
+
+const RECURRING_COLS = 'id, name, freq, interval_n, day_of_month, start_date, end_date, next_date, template, is_active, created_at';
+
+export async function listRecurring(ledgerId) {
+  return call(supabase.from('recurring').select(RECURRING_COLS).eq('ledger_id', ledgerId).order('next_date'));
+}
+
+export async function getRecurring(id) {
+  return call(supabase.from('recurring').select(RECURRING_COLS).eq('id', id).maybeSingle());
+}
+
+/** 반복 거래 추가·수정 (id가 있으면 수정) */
+export async function saveRecurring(ledgerId, r) {
+  const row = {
+    ledger_id: ledgerId, name: r.name.trim(), freq: r.freq, interval_n: r.interval_n,
+    day_of_month: r.freq === 'weekly' ? null : r.day_of_month,
+    start_date: r.start_date, end_date: r.end_date || null, next_date: r.next_date,
+    template: r.template, is_active: r.is_active ?? true,
+  };
+  if (r.id) return call(supabase.from('recurring').update(row).eq('id', r.id).select('id').single());
+  return call(supabase.from('recurring').insert(row).select('id').single());
+}
+
+export async function setRecurringActive(id, active) {
+  return call(supabase.from('recurring').update({ is_active: active }).eq('id', id));
+}
+
+export async function deleteRecurring(id) {
+  return call(supabase.from('recurring').delete().eq('id', id));
+}
+
+/** 이번 회차 건너뛰기 → 다음 예정일 */
+export async function skipRecurring(id, date) {
+  return call(supabase.rpc('skip_recurring', { p_id: id, p_date: date }));
+}
+
+// ---------------------------------------------------------------------
+// 즐겨찾기
+// ---------------------------------------------------------------------
+
+export async function listFavorites(ledgerId) {
+  return call(supabase.from('favorites').select('id, name, template, sort_order')
+    .eq('ledger_id', ledgerId).order('sort_order').order('created_at'));
+}
+
+export async function createFavorite(ledgerId, name, template, sortOrder = 0) {
+  return call(supabase.from('favorites').insert({ ledger_id: ledgerId, name: name.trim(), template, sort_order: sortOrder })
+    .select('id, name, template, sort_order').single());
+}
+
+export async function updateFavorite(id, patch) {
+  return call(supabase.from('favorites').update(patch).eq('id', id));
+}
+
+export async function deleteFavorite(id) {
+  return call(supabase.from('favorites').delete().eq('id', id));
 }
 
 /** 최근 전표 (휴지통 제외, 분개 라인 포함) */

@@ -8,7 +8,7 @@ import { state, setState, prefs } from './ui/state.js';
 import { applyTheme } from './ui/theme.js';
 import { renderAuth } from './ui/auth.js';
 import { renderShell, renderView, navigate } from './ui/shell.js';
-import { getSession, onAuthChange, listLedgers, listAccounts, ledgerCheck, schemaVersion } from './data/api.js';
+import { getSession, onAuthChange, listLedgers, listAccounts, listFavorites, ledgerCheck, schemaVersion } from './data/api.js';
 import { onQueueChange, flush, queueInfo, isNetworkError } from './data/sync.js';
 import { supabase } from './data/supabase.js';
 
@@ -77,6 +77,7 @@ async function enterApp(session, force = false) {
   let ledgers;
   let accounts;
   let ledgerId;
+  let favorites = [];
   let offlineMode = false;
   try {
     ledgers = await listLedgers(session.user.id);
@@ -86,14 +87,16 @@ async function enterApp(session, force = false) {
       return;
     }
     ledgerId = pickLedger(ledgers);
-    accounts = await listAccounts(ledgerId);
+    [accounts, favorites] = await Promise.all([listAccounts(ledgerId), listFavorites(ledgerId)]);
     prefs.set('cache.ledgers.' + session.user.id, ledgers);
     prefs.set('cache.accounts.' + ledgerId, accounts);
+    prefs.set('cache.favorites.' + ledgerId, favorites);
   } catch (err) {
     // 오프라인: 기기에 저장해 둔 목록 사용
     ledgers = prefs.get('cache.ledgers.' + session.user.id);
     ledgerId = ledgers && pickLedger(ledgers);
     accounts = ledgerId && prefs.get('cache.accounts.' + ledgerId);
+    favorites = (ledgerId && prefs.get('cache.favorites.' + ledgerId)) || [];
     if (!isNetworkError(err) || !accounts) {
       replace(root, h('main', { class: 'auth' }, errorBox(err.message, () => enterApp(session, true))));
       return;
@@ -101,9 +104,9 @@ async function enterApp(session, force = false) {
     offlineMode = true;
   }
 
-  setState({ ledgers, ledgerId, accounts, offlineMode });
+  setState({ ledgers, ledgerId, accounts, favorites, offlineMode });
   prefs.set('ledgerId', ledgerId);
-  renderShell(root, { switchLedger, reloadAccounts });
+  renderShell(root, { switchLedger, reloadAccounts, reloadFavorites });
   setState({ queue: await queueInfo() });
 
   if (offlineMode) {
@@ -162,9 +165,10 @@ async function maybeStartOpeningWizard() {
 /** 장부 바꾸기 */
 async function switchLedger(ledgerId) {
   try {
-    const accounts = await listAccounts(ledgerId);
+    const [accounts, favorites] = await Promise.all([listAccounts(ledgerId), listFavorites(ledgerId)]);
     prefs.set('cache.accounts.' + ledgerId, accounts);
-    setState({ ledgerId, accounts });
+    prefs.set('cache.favorites.' + ledgerId, favorites);
+    setState({ ledgerId, accounts, favorites });
     prefs.set('ledgerId', ledgerId);
     renderView();
     maybeStartOpeningWizard();
@@ -178,6 +182,13 @@ async function reloadAccounts() {
   const accounts = await listAccounts(state.ledgerId);
   prefs.set('cache.accounts.' + state.ledgerId, accounts);
   setState({ accounts });
+}
+
+/** 즐겨찾기 다시 불러오기 */
+async function reloadFavorites() {
+  const favorites = await listFavorites(state.ledgerId);
+  prefs.set('cache.favorites.' + state.ledgerId, favorites);
+  setState({ favorites });
 }
 
 /** PWA: 서비스 워커 등록 (앱 화면을 오프라인에서도 열 수 있게) */

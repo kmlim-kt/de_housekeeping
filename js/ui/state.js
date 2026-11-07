@@ -7,6 +7,7 @@ export const state = {
   ledgers: [],       // 내가 속한 장부 [{id, name, role}]
   ledgerId: null,    // 현재 장부
   accounts: [],      // 현재 장부의 계정과목
+  favorites: [],     // 현재 장부의 즐겨찾기 (간편 입력 틀)
   online: navigator.onLine,
   queue: { pending: 0, failed: 0, items: [] },   // 저장 대기열
   offlineMode: false, // 서버 대신 기기에 저장해 둔 계정 목록으로 연 상태

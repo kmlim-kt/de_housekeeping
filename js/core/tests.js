@@ -7,6 +7,8 @@ import { parseAmount, formatAmount, formatCompact, sumAmounts, reformatTyping, M
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
 import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
+import { budgetReport, figures as budgetFigures } from './budget.js';
+import { nextOccurrence, firstOccurrence, describeRule, dueList, templateLines, templateAmount } from './recurring.js';
 import { trialBalance, periodRange, accountTotal, dayBefore, balanceSheet, incomeStatement, savingsRate,
   pctChange, monthRange, shiftMonth, previousMonthEnd, currentMonth } from './reports.js';
 
@@ -391,6 +393,92 @@ test('기간: 이번 달·지난 달·올해 (말일·연초 경계)', () => {
   eq(periodRange('thisYear', now), { from: '2026-01-01', to: '2026-12-31' });
   eq(periodRange('thisMonth', new Date(2028, 1, 10)).to, '2028-02-29');
   eq(periodRange('all', now), { from: null, to: null });
+});
+
+// ---------------------------------------------------------------------
+// 예산
+// ---------------------------------------------------------------------
+const B_ACCS = [
+  { id: 'food', name: '식비', parent_id: null, sort_order: 410 },
+  { id: 'eat', name: '외식', parent_id: 'food', sort_order: 411 },
+  { id: 'grocery', name: '장보기', parent_id: 'food', sort_order: 412 },
+  { id: 'trans', name: '교통', parent_id: null, sort_order: 430 },
+  { id: 'etc', name: '기타 지출', parent_id: null, sort_order: 520 },
+];
+const B_ROWS = [
+  { account_id: 'eat', type: 'expense', parent_id: 'food', debit_total: 250000, credit_total: 0 },
+  { account_id: 'grocery', type: 'expense', parent_id: 'food', debit_total: 300000, credit_total: 10000 },  // 환불 1만
+  { account_id: 'trans', type: 'expense', parent_id: null, debit_total: 85000, credit_total: 0 },
+  { account_id: 'etc', type: 'expense', parent_id: null, debit_total: 40000, credit_total: 0 },
+  { account_id: 'cash', type: 'asset', parent_id: null, debit_total: 0, credit_total: 675000 },
+];
+test('예산: 상위 계정 예산은 하위 지출 합산, 환불은 지출에서 뺌', () => {
+  const r = budgetReport([{ account_id: 'food', amount: 500000 }, { account_id: 'trans', amount: 100000 }], B_ROWS, B_ACCS);
+  const food = r.items.find((i) => i.accountId === 'food');
+  eq([food.spent, food.remaining, food.percent, food.status], [540000, -40000, 108, 'over']);
+  const trans = r.items.find((i) => i.accountId === 'trans');
+  eq([trans.percent, trans.status], [85, 'warn']);
+  eq(r.total, { budget: 600000, spent: 625000, remaining: -25000, percent: 104.2, status: 'over' });
+  eq([r.unbudgeted, r.totalExpense], [40000, 665000]);   // 기타 지출만 예산 밖
+});
+test('예산: 상위·하위 모두 예산이면 합계는 상위만 (이중 계산 없음)', () => {
+  const r = budgetReport([{ account_id: 'food', amount: 500000 }, { account_id: 'eat', amount: 200000 }], B_ROWS, B_ACCS);
+  eq(r.items.map((i) => [i.name, i.spent, i.status]), [['식비', 540000, 'over'], ['외식', 250000, 'over']]);
+  eq([r.total.budget, r.total.spent], [500000, 540000]);
+});
+test('예산: 0원 예산은 무시, 상태 기준(80% 주의, 100% 초과는 넘을 때만)', () => {
+  eq(budgetReport([{ account_id: 'trans', amount: 0 }], B_ROWS, B_ACCS).items.length, 0);
+  eq(budgetFigures(100000, 79000).status, 'ok');
+  eq(budgetFigures(100000, 80000).status, 'warn');
+  eq(budgetFigures(100000, 100000).status, 'warn');
+  eq(budgetFigures(100000, 100001).status, 'over');
+});
+
+// ---------------------------------------------------------------------
+// 반복 거래
+// ---------------------------------------------------------------------
+test('반복: 다음 예정일 (말일 보정, 윤년, 매주, 2개월마다) — DB와 같은 규칙', () => {
+  eq(nextOccurrence('2026-01-31', 'monthly', 1, 31), '2026-02-28');
+  eq(nextOccurrence('2026-02-28', 'monthly', 1, 31), '2026-03-31');
+  eq(nextOccurrence('2026-04-30', 'monthly', 1, 31), '2026-05-31');
+  eq(nextOccurrence('2026-01-25', 'monthly', 2, 25), '2026-03-25');
+  eq(nextOccurrence('2028-02-29', 'yearly', 1, 29), '2029-02-28');
+  eq(nextOccurrence('2026-12-28', 'weekly', 1), '2027-01-04');
+  eq(nextOccurrence('2026-01-10', 'monthly'), '2026-02-10');   // 날짜 지정 없음 → 그 날짜의 일
+});
+test('반복: 처음 예정일 — 시작일 이후 처음 맞는 날', () => {
+  eq(firstOccurrence('2026-11-10', 'monthly', 25), '2026-11-25');
+  eq(firstOccurrence('2026-11-26', 'monthly', 25), '2026-12-25');
+  eq(firstOccurrence('2026-02-10', 'monthly', 31), '2026-02-28');
+  eq(firstOccurrence('2026-11-07', 'weekly', null), '2026-11-07');
+});
+test('반복: 규칙 문장', () => {
+  eq(describeRule({ freq: 'monthly', interval_n: 1, day_of_month: 25, next_date: '2026-11-25' }), '매월 25일');
+  eq(describeRule({ freq: 'monthly', interval_n: 2, day_of_month: 31, next_date: '2026-11-30' }), '2개월마다 말일');
+  eq(describeRule({ freq: 'weekly', interval_n: 1, day_of_month: null, next_date: '2026-11-13' }), '매주 금요일');
+  eq(describeRule({ freq: 'yearly', interval_n: 1, day_of_month: 15, next_date: '2027-03-15' }), '매년 3월 15일');
+});
+test('반복: 등록 대기 = 활성 + 예정일 지남 + 종료일 전, 오래된 순', () => {
+  const list = [
+    { name: '월세', is_active: true, next_date: '2026-11-01', end_date: null },
+    { name: '통신비', is_active: true, next_date: '2026-11-07', end_date: null },
+    { name: '적금', is_active: true, next_date: '2026-11-20', end_date: null },
+    { name: '중단', is_active: false, next_date: '2026-10-01', end_date: null },
+    { name: '끝남', is_active: true, next_date: '2026-11-05', end_date: '2026-10-31' },
+  ];
+  eq(dueList(list, '2026-11-07').map((r) => r.name), ['월세', '통신비']);
+});
+test('반복·즐겨찾기 틀 → 분개: 간편 틀(금액 바꾸기 가능)·분개 틀·잘못된 틀', () => {
+  const simpleT = { mode: 'simple', kind: 'expense', values: { amount: 55000, expenseId: 'food', sourceId: 'bank1' }, memo: '통신비' };
+  eq(templateLines(simpleT).lines, [{ account_id: 'food', debit: 55000, credit: 0 }, { account_id: 'bank1', debit: 0, credit: 55000 }]);
+  eq(templateLines(simpleT, { amount: 61000 }).total, 61000);
+  eq(templateAmount(simpleT), 55000);
+  const advT = { mode: 'advanced', kind: 'manual', lines: [
+    { account_id: 'bank1', debit: 3000000, credit: 0 }, { account_id: 'tax', debit: 300000, credit: 0 },
+    { account_id: 'salary', debit: 0, credit: 3300000 }] };
+  eq([templateLines(advT).ok, templateLines(advT).total, templateAmount(advT)], [true, 3300000, 3300000]);
+  eq(templateLines({ mode: 'advanced', lines: [{ account_id: 'a', debit: 1, credit: 0 }] }).ok, false);
+  eq(templateLines(null).ok, false);
 });
 
 /** 모든 테스트 실행 → [{name, ok, error}] */

@@ -12,13 +12,17 @@ import { lineChart, groupedBarChart } from '../charts.js';
 import { formatAmount } from '../../core/money.js';
 import { rollupType, savingsRate, pctChange, monthRange, currentMonth } from '../../core/reports.js';
 import { todayLocal } from '../../core/journal.js';
-import { ledgerCheck, monthlySummary, accountBalances } from '../../data/api.js';
+import { ledgerCheck, monthlySummary, accountBalances, listBudgets } from '../../data/api.js';
+import { budgetReport } from '../../core/budget.js';
+import { statusBadge, meter, remainingText } from '../budget-view.js';
+import { recurringDue } from '../recurring-due.js';
 
-export function render(view) {
+export function render(view, ctx) {
   const charts = [];
   const body = h('div', { class: 'stack-lg' }, loading());
   const refresh = h('button', { class: 'btn small', type: 'button', onClick: load }, '새로고침');
-  append(view, h('div', { class: 'row between' }, h('h1', { class: 'view-title' }, '대시보드'), refresh), body);
+  append(view, h('div', { class: 'row between' }, h('h1', { class: 'view-title' }, '대시보드'), refresh),
+    h('div', { style: 'margin-bottom:20px' }, recurringDue({ navigate: ctx.navigate, onChange: load })), body);
   load();
   return () => charts.forEach((c) => c?.destroy());   // 화면을 떠날 때 그래프 정리
 
@@ -28,19 +32,20 @@ export function render(view) {
     const today = todayLocal();
     const ym = currentMonth();
     try {
-      const [check, months, monthRows] = await Promise.all([
+      const [check, months, monthRows, budgets] = await Promise.all([
         ledgerCheck(state.ledgerId),
         monthlySummary(state.ledgerId, 12, today),
         accountBalances(state.ledgerId, monthRange(ym).from, today),
+        listBudgets(state.ledgerId, ym),
       ]);
-      draw(check, months, monthRows, ym);
+      draw(check, months, monthRows, ym, budgets);
     } catch (err) {
       replace(body, errorBox(state.online ? err.message
         : '오프라인이라 장부 현황을 불러올 수 없습니다. 입력은 계속할 수 있고, 연결되면 자동으로 저장됩니다.', load));
     }
   }
 
-  function draw(r, months, monthRows, ym) {
+  function draw(r, months, monthRows, ym, budgets) {
     const cur = months.at(-1) ?? { income: 0, expense: 0, net_worth: 0 };
     const prev = months.at(-2) ?? { income: 0, expense: 0, net_worth: 0 };
     const saving = cur.income - cur.expense;
@@ -90,9 +95,7 @@ export function render(view) {
 
       topExpenses(monthRows, monthLabel),
 
-      h('section', { class: 'card stack' },
-        h('h2', {}, '예산 대비 지출'),
-        h('p', { class: 'small muted' }, '비용 계정별 월 예산과 초과 경고는 5단계에서 이곳에 추가됩니다.')),
+      budgetCard(budgets, monthRows, monthLabel),
 
       // ---------- 장부 검증 ----------
       h('section', { class: 'card stack' },
@@ -146,6 +149,30 @@ function topExpenses(rows, monthLabel) {
             h('div', { class: 'rank-track', 'aria-hidden': 'true' },
               h('div', { class: 'rank-bar', style: `width:${Math.max(2, (r.amount / max) * 100)}%` }))))))
       : h('p', { class: 'muted' }, '이번 달 지출이 아직 없습니다.'));
+}
+
+/** 예산 대비 지출: 전체 사용률 + 주의·초과 항목 (최대 4개) */
+function budgetCard(budgets, rows, monthLabel) {
+  const r = budgetReport(budgets, rows, state.accounts);
+  const head = h('div', { class: 'row between' }, h('h2', {}, `${monthLabel} 예산`),
+    h('a', { href: '#/reports/budget', class: 'small' }, r.items.length ? '예산 ›' : '예산 정하기 ›'));
+  if (!r.items.length) {
+    return h('section', { class: 'card stack' }, head,
+      h('p', { class: 'small muted' }, '식비·교통 등 항목별로 한 달 예산을 정하면 여기에서 얼마나 썼는지, 넘쳤는지 보여 드립니다.'));
+  }
+  const alerts = r.items.filter((i) => i.status !== 'ok').sort((a, b) => b.percent - a.percent).slice(0, 4);
+  return h('section', { class: 'card stack' }, head,
+    h('div', { class: 'row between num' },
+      h('span', {}, `${formatAmount(r.total.spent)} / ${formatAmount(r.total.budget)}원`),
+      statusBadge(r.total.status)),
+    meter(r.total),
+    h('p', { class: 'small muted' }, remainingText(r.total)),
+    alerts.length
+      ? h('ul', { class: 'list' }, alerts.map((i) => h('li', { class: 'stack', style: 'gap:4px' },
+          h('div', { class: 'row between' }, h('span', {}, i.name),
+            h('span', { class: 'row', style: 'gap:6px' }, h('span', { class: 'small num' }, `${i.percent}%`), statusBadge(i.status))),
+          meter(i))))
+      : h('p', { class: 'small' }, '✔ 모든 항목이 예산 안에 있습니다.'));
 }
 
 /** 그래프 아래 "표로 보기" (그래프를 못 보는 경우·정확한 숫자 확인용) */
