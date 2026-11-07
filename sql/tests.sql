@@ -211,6 +211,56 @@ begin
   assert n = 4720000, format('❌ [월별 요약] 거래 없는 2월 말 순자산도 472만 (실제 %s)', n);
 
   ------------------------------------------------------------------
+  -- 1-3. 거래 시각과 시간순 정렬 (같은 날 1/25: 시각 없는 카드대금·급여 + 시각 있는 이체 2건)
+  --   이체(자산 → 자산)라 순자산·손익에는 영향 없음
+  ------------------------------------------------------------------
+  t_tmp := gen_random_uuid();
+  perform public.create_transaction(t_tmp, la, '2026-01-25', '저녁 이체', 'transfer', 'simple',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 1000),
+                      jsonb_build_object('account_id', a_bank, 'credit', 1000)), null, null, '21:30:45');
+  perform public.create_transaction(gen_random_uuid(), la, '2026-01-25', '아침 이체', 'transfer', 'simple',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 2000),
+                      jsonb_build_object('account_id', a_bank, 'credit', 2000)), null, null, '08:05');
+  select txn_time::text into v_code from public.transactions where id = t_tmp;
+  assert v_code = '21:30:00', '❌ [시각] 초는 버리고 시:분으로 저장 (실제 ' || v_code || ')';
+  -- 최신 먼저(기본): 시각 있는 저녁 → 아침 → (시각 없는 것은 그날 맨 앞이므로 맨 뒤)
+  select string_agg(memo, ',' order by o) into v_code from (
+    select memo, row_number() over () as o from public.search_transactions(la, p_from => '2026-01-25', p_to => '2026-01-25')) x
+   where o <= 2;
+  assert v_code = '저녁 이체,아침 이체', '❌ [정렬] 내림차순 앞 두 건은 저녁 → 아침 (실제 ' || v_code || ')';
+  -- 오래된 것 먼저: 시각 없는 것이 맨 앞, 마지막 두 건은 아침 → 저녁
+  select string_agg(memo, ',' order by o) into v_code from (
+    select memo, row_number() over () as o from public.search_transactions(la, p_from => '2026-01-25', p_to => '2026-01-25', p_order => 'asc')) x
+   where o >= 3;
+  assert v_code = '아침 이체,저녁 이체', '❌ [정렬] 오름차순 마지막 두 건은 아침 → 저녁 (실제 ' || v_code || ')';
+  select txn_time into v_code from public.search_transactions(la, p_from => '2026-01-25', p_to => '2026-01-25', p_order => 'asc') limit 1;
+  assert v_code is null, '❌ [정렬] 오름차순 맨 앞은 시각 없는 전표';
+  -- 원장도 같은 날은 시각 순 (현금: 아침 2000 → 저녁 1000)
+  select string_agg(debit::text, ',' order by o) into v_code from (
+    select debit, row_number() over () as o from public.account_ledger(a_cash, '2026-01-25', '2026-01-25')) x;
+  assert v_code = '2000,1000', '❌ [원장] 같은 날은 시각 순 (실제 ' || v_code || ')';
+  -- 수정: null = 그대로, '07:10' = 바꿈, '' = 지움
+  perform public.update_transaction(t_tmp, '2026-01-25', '저녁 이체', 'transfer',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 1000), jsonb_build_object('account_id', a_bank, 'credit', 1000)));
+  select txn_time::text into v_code from public.transactions where id = t_tmp;
+  assert v_code = '21:30:00', '❌ [시각 수정] 시각을 안 넘기면 그대로';
+  perform public.update_transaction(t_tmp, '2026-01-25', '저녁 이체', 'transfer',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 1000), jsonb_build_object('account_id', a_bank, 'credit', 1000)),
+    null, '07:10');
+  select txn_time::text into v_code from public.transactions where id = t_tmp;
+  assert v_code = '07:10:00', '❌ [시각 수정] 07:10으로 바뀌어야 함';
+  perform public.update_transaction(t_tmp, '2026-01-25', '저녁 이체', 'transfer',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 1000), jsonb_build_object('account_id', a_bank, 'credit', 1000)),
+    null, '');
+  select count(*) into n from public.transactions where id = t_tmp and txn_time is null;
+  assert n = 1, '❌ [시각 수정] 빈 값이면 시각이 지워져야 함';
+  perform public.update_transaction(t_tmp, '2026-01-25', '저녁 이체', 'transfer',
+    jsonb_build_array(jsonb_build_object('account_id', a_cash, 'debit', 1000), jsonb_build_object('account_id', a_bank, 'credit', 1000)),
+    null, '21:30');
+  r := public.ledger_check(la);
+  assert (r->>'net_worth')::bigint = 4720000, '❌ [시각] 이체는 순자산을 바꾸지 않음: ' || r::text;
+
+  ------------------------------------------------------------------
   -- 2. 차대 검증 (RPC가 거부해야 하는 입력)
   ------------------------------------------------------------------
   failed := false;
@@ -616,6 +666,9 @@ begin
   assert n = 1, format('❌ [복원] 예산 1건 (실제 %s)', n);
   select role into v_code from public.ledger_members where ledger_id = lr and user_id = ua;
   assert v_code = 'owner', '❌ [복원] 복원한 사람이 새 장부의 소유자';
+  select count(*) into n from public.transactions where ledger_id = lr and txn_time is not null;
+  assert n = (select count(*) from public.transactions where ledger_id = la and txn_time is not null) and n > 0,
+    '❌ [복원] 거래 시각도 그대로 복원되어야 함';
 
   -- 잘못된 파일·차대가 맞지 않는 백업은 아무것도 만들지 않음
   select count(*) into n from public.ledgers;
@@ -652,7 +705,7 @@ begin
   exception when others then failed := true;
   end;
   assert failed, '❌ [anon] 로그인하지 않으면 전표를 저장할 수 없어야 함';
-  assert public.schema_version() >= 4, '❌ [버전] schema_version()이 4 이상이어야 함 (DB 업데이트 002~004 실행 여부)';
+  assert public.schema_version() >= 5, '❌ [버전] schema_version()이 5 이상이어야 함 (DB 업데이트 002~005 실행 여부)';
   failed := false;
   begin
     perform public.search_transactions(la);

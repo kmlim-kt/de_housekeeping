@@ -130,7 +130,7 @@ export async function deleteAccount(id) {
  * 전표 저장 (RPC create_transaction)
  * id는 기기에서 미리 만든 UUID — 같은 id로 다시 보내도 중복 저장되지 않습니다.
  */
-export async function createTransaction({ id, ledgerId, date, memo, kind, source, lines, recurringId = null, recurringDate = null }) {
+export async function createTransaction({ id, ledgerId, date, time = null, memo, kind, source, lines, recurringId = null, recurringDate = null }) {
   return call(
     supabase.rpc('create_transaction', {
       p_id: id,
@@ -143,6 +143,7 @@ export async function createTransaction({ id, ledgerId, date, memo, kind, source
       // 반복 거래에서 등록: 예정일이 맞는지 DB가 확인하고 다음 예정일로 넘김 (두 기기 중복 등록 방지)
       p_recurring_id: recurringId,
       p_recurring_date: recurringDate,
+      p_time: time || null,   // 거래 시각 "HH:MM" (없으면 null)
     }),
   );
 }
@@ -241,10 +242,11 @@ export async function listRecentTransactions(ledgerId, limit = 10) {
   return call(
     supabase
       .from('transactions')
-      .select('id, txn_date, memo, kind, source, created_at, created_by, lines(account_id, debit, credit, line_no)')
+      .select('id, txn_date, txn_time, memo, kind, source, created_at, created_by, lines(account_id, debit, credit, line_no)')
       .eq('ledger_id', ledgerId)
       .eq('is_deleted', false)
       .order('txn_date', { ascending: false })
+      .order('txn_time', { ascending: false, nullsFirst: false })   // 시각 없는 전표는 그날 맨 앞(=최신순에서는 뒤)
       .order('created_at', { ascending: false })
       .limit(limit),
   );
@@ -252,7 +254,7 @@ export async function listRecentTransactions(ledgerId, limit = 10) {
 
 /**
  * 전표 검색 (분개장·휴지통)
- * @param {{ ledgerId, from?, to?, accountId?, query?, min?, max?, deleted?, limit?, offset? }} f
+ * @param {{ ledgerId, from?, to?, accountId?, query?, min?, max?, deleted?, limit?, offset?, order?: 'asc'|'desc' }} f
  * @returns {Promise<{ rows: Array, total: number }>}
  */
 export async function searchTransactions(f) {
@@ -267,6 +269,7 @@ export async function searchTransactions(f) {
     p_deleted: !!f.deleted,
     p_limit: f.limit ?? 50,
     p_offset: f.offset ?? 0,
+    p_order: f.order === 'asc' ? 'asc' : 'desc',
   }));
   return { rows, total: rows[0]?.total_count ?? 0 };
 }
@@ -276,7 +279,7 @@ export async function getTransaction(id) {
   return call(
     supabase
       .from('transactions')
-      .select('id, ledger_id, txn_date, memo, kind, source, is_deleted, deleted_at, created_at, updated_at, created_by, updated_by, lines(account_id, debit, credit, memo, line_no)')
+      .select('id, ledger_id, txn_date, txn_time, memo, kind, source, is_deleted, deleted_at, created_at, updated_at, created_by, updated_by, lines(account_id, debit, credit, memo, line_no)')
       .eq('id', id)
       .maybeSingle(),
   );
@@ -287,10 +290,11 @@ export async function getTransaction(id) {
  * expectedUpdatedAt: 불러온 시점의 updated_at. 그 사이 다른 기기에서 고쳤으면 DB가 거부
  * @returns {Promise<string>} 새 updated_at
  */
-export async function updateTransaction({ id, date, memo, kind, lines, expectedUpdatedAt }) {
+export async function updateTransaction({ id, date, time = '', memo, kind, lines, expectedUpdatedAt }) {
   return call(supabase.rpc('update_transaction', {
     p_id: id, p_date: date, p_memo: memo, p_kind: kind, p_lines: lines,
     p_expected_updated_at: expectedUpdatedAt ?? null,
+    p_time: time ?? '',   // "HH:MM" 또는 '' (시각 지우기)
   }));
 }
 
@@ -342,7 +346,7 @@ export async function fetchAllTransactions(ledgerId, onProgress) {
   const all = [];
   for (let from = 0; ; from += 1000) {
     const page = await call(supabase.from('transactions')
-      .select('id, txn_date, memo, kind, source, recurring_id, is_deleted, deleted_at, created_at, lines(account_id, debit, credit, memo, line_no)')
+      .select('id, txn_date, txn_time, memo, kind, source, recurring_id, is_deleted, deleted_at, created_at, lines(account_id, debit, credit, memo, line_no)')
       .eq('ledger_id', ledgerId).order('created_at').order('id').range(from, from + 999));
     all.push(...page);
     onProgress?.(all.length);

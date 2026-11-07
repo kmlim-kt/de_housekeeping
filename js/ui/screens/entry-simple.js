@@ -11,7 +11,7 @@ import { amountInput } from '../amount-input.js';
 import { chipGroup } from '../chips.js';
 import { state, recentUse, prefs } from '../state.js';
 import { SIMPLE_FORMS, SIMPLE_KINDS, buildSimple, sortByRecent, defaultChoice } from '../../core/simple.js';
-import { validateJournal, todayLocal, isValidDate } from '../../core/journal.js';
+import { validateJournal, todayLocal, isValidDate, nowTimeLocal, isValidTime, formatTime } from '../../core/journal.js';
 import { postableAccounts, indexAccounts, describeLines } from '../../core/balance.js';
 import { parseAmount } from '../../core/money.js';
 
@@ -45,6 +45,10 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
   const kindTabs = h('div', { class: 'segmented kinds', role: 'group', 'aria-label': '입력 종류' });
   const body = h('div', { class: 'stack-lg' });
   const dateInput = h('input', { type: 'date', value: initial?.date ?? todayLocal(), 'aria-label': '날짜' });
+  // 시각: 새 입력은 지금 시각, 수정·반복 등록은 저장된 시각(없으면 빈칸). 비워 두면 "시각 없음"
+  const timeInput = h('input', { type: 'time', step: '60', 'aria-label': '시각',
+    value: initial ? formatTime(initial.time) : nowTimeLocal() });
+  timeInput.addEventListener('input', update);
   const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '메모 (선택)', 'aria-label': '메모',
     enterkeyhint: 'done', value: initial?.memo ?? '' });
   const preview = h('p', { class: 'small muted', 'aria-live': 'polite' });
@@ -56,8 +60,10 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
 
   const form = h('form', { class: 'stack-lg', novalidate: true },
     favBox, kindTabs, body,
-    h('div', { class: hideDate ? 'card' : 'card row-2' },
-      hideDate ? null : h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
+    h('div', { class: 'card stack' },
+      hideDate ? null : h('div', { class: 'row-2' },
+        h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
+        h('label', { class: 'field' }, h('span', {}, '시각'), timeInput)),
       h('label', { class: 'field' }, h('span', {}, '메모'), memoInput)),
     favSave,
     h('div', { class: 'je-summary' }, preview, saveBtn));
@@ -186,7 +192,7 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
   /** 미리보기·저장 버튼 갱신 */
   function update() {
     const r = buildSimple(kind, values);
-    const dateOk = isValidDate(dateInput.value);
+    const dateOk = isValidDate(dateInput.value) && isValidTime(timeInput.value);
     // 변환 결과를 분개 검증(core/journal)으로 한 번 더 확인
     const check = r.ok
       ? validateJournal(r.lines.map((l) => ({ accountId: l.account_id, debit: l.debit, credit: l.credit })))
@@ -198,7 +204,7 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
       preview.textContent = '이렇게 기록됩니다: ' + describeLines(r.lines, byId);
       preview.className = 'small muted preview';
     } else {
-      const first = !dateOk ? '날짜를 확인하세요.' : (r.errors[0] ?? check?.errors[0]?.message ?? '');
+      const first = !dateOk ? '날짜와 시각을 확인하세요.' : (r.errors[0] ?? check?.errors[0]?.message ?? '');
       // 아직 아무것도 안 넣었으면 부드러운 안내
       const untouched = SIMPLE_FORMS[kind].amounts.every(({ key }) => !values[key]);
       preview.textContent = untouched ? '금액을 넣고 항목을 고르면 장부에 어떻게 기록되는지 보여 드립니다.' : first;
@@ -214,6 +220,7 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
       id: pendingId,
       ledgerId: state.ledgerId,
       date: dateInput.value,
+      time: timeInput.value || null,
       memo: memoInput.value.trim(),
       kind,
       source: 'simple',
@@ -226,6 +233,7 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
       // 다음 입력 준비: 금액·항목은 비우고 결제수단 등(최근 사용)은 다시 미리 고름. 날짜는 유지
       pendingId = crypto.randomUUID();
       memoInput.value = '';
+      timeInput.value = nowTimeLocal();   // 다음 입력은 다시 지금 시각
       drawBody();
       form.focusAmount();
     } else {

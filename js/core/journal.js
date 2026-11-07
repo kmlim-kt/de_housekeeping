@@ -115,6 +115,33 @@ export function todayLocal(now = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+/** 지금 시각 (기기 현지 시간) "HH:MM" */
+export function nowTimeLocal(now = new Date()) {
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 시각 입력값 확인: "" (시각 없음) 또는 "HH:MM" / "HH:MM:SS" */
+export function isValidTime(s) {
+  if (s === '' || s === null || s === undefined) return true;
+  const m = String(s).match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  return !!m && Number(m[1]) < 24 && Number(m[2]) < 60 && (m[3] === undefined || Number(m[3]) < 60);
+}
+
+/** DB의 "21:30:00" → 화면 "21:30" (없으면 '') */
+export function formatTime(t) {
+  return t ? String(t).slice(0, 5) : '';
+}
+
+/**
+ * 전표 정렬 비교: 날짜 → 시각(없으면 그날 맨 앞) → 입력 시각
+ * @param {'asc'|'desc'} order
+ */
+export function compareTransactions(a, b, order = 'desc') {
+  const key = (t) => `${t.txn_date} ${formatTime(t.txn_time) || '00:00'} ${t.created_at ?? ''}`;
+  const c = key(a).localeCompare(key(b));
+  return order === 'asc' ? c : -c;
+}
+
 /** "YYYY-MM-DD" 형식이고 실제로 있는 날짜인지 */
 export function isValidDate(s) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;

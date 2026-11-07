@@ -19,7 +19,7 @@ export function buildBackup({ ledgerName, schemaVersion, accounts, transactions,
     ledger: { name: ledgerName },
     accounts: accounts.map((a) => pick(a, ['id', 'name', 'type', 'subtype', 'parent_id', 'is_hidden', 'is_system', 'sort_order'])),
     transactions: transactions.map((t) => ({
-      ...pick(t, ['id', 'txn_date', 'memo', 'kind', 'source', 'recurring_id', 'is_deleted', 'deleted_at', 'created_at']),
+      ...pick(t, ['id', 'txn_date', 'txn_time', 'memo', 'kind', 'source', 'recurring_id', 'is_deleted', 'deleted_at', 'created_at']),
       lines: [...t.lines].sort((a, b) => a.line_no - b.line_no)
         .map((l) => pick(l, ['account_id', 'debit', 'credit', 'memo', 'line_no'])),
     })),

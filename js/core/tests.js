@@ -5,11 +5,11 @@
 
 import { parseAmount, formatAmount, formatCompact, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
 import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
-import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
+import { validateJournal, toRpcLines, isValidDate, todayLocal, nowTimeLocal, isValidTime, formatTime, compareTransactions } from './journal.js';
 import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
 import { budgetReport, figures as budgetFigures } from './budget.js';
 import { toCsv, parseCsv, decodeText } from './csv.js';
-import { guessHeaderRow, guessMapping, parseDate, parseMoney, buildEntries, suggestAccount, learnRules,
+import { guessHeaderRow, guessMapping, parseDate, parseTime, parseMoney, buildEntries, suggestAccount, learnRules,
   findDuplicates, entryLines, kindFor } from './importer.js';
 import { buildBackup, checkBackup, backupFileName } from './backup.js';
 import { journalRows, trialRows } from './exports.js';
@@ -161,6 +161,22 @@ test('분개: 저장용 변환은 빈 줄 제외·정수화', () => {
     { account_id: 'food', debit: 30000, credit: 0, memo: '점심' },
     { account_id: 'cash', debit: 0, credit: 30000, memo: '' },
   ]);
+});
+test('시각: 지금 시각(현지), 입력 확인, 표시', () => {
+  eq(nowTimeLocal(new Date(2026, 0, 5, 7, 3)), '07:03');
+  eq([isValidTime(''), isValidTime('09:30'), isValidTime('23:59:59'), isValidTime('24:00'), isValidTime('9:30'), isValidTime('12:60')],
+     [true, true, true, false, false, false]);
+  eq([formatTime('21:30:00'), formatTime(null)], ['21:30', '']);
+});
+test('시간순 정렬: 날짜 → 시각(없으면 그날 맨 앞) → 입력 순, 오름/내림', () => {
+  const list = [
+    { id: 'a', txn_date: '2026-11-07', txn_time: '21:30:00', created_at: '1' },
+    { id: 'b', txn_date: '2026-11-07', txn_time: null, created_at: '2' },
+    { id: 'c', txn_date: '2026-11-07', txn_time: '08:05:00', created_at: '3' },
+    { id: 'd', txn_date: '2026-11-06', txn_time: '23:00:00', created_at: '4' },
+  ];
+  eq([...list].sort((x, y) => compareTransactions(x, y, 'asc')).map((t) => t.id), ['d', 'b', 'c', 'a']);
+  eq([...list].sort((x, y) => compareTransactions(x, y, 'desc')).map((t) => t.id), ['a', 'c', 'b', 'd']);
 });
 test('날짜: 형식·실제 날짜 검사, 오늘 날짜는 현지 기준', () => {
   eq(isValidDate('2026-02-28'), true);
@@ -517,10 +533,16 @@ const BANK = [
 test('가져오기: 머리글 줄·열 자동 추측 (통장 — 출금/입금 열)', () => {
   const hr = guessHeaderRow(BANK);
   eq(hr, 2);
-  eq(guessMapping(BANK[hr]), { date: 0, memo: 1, out: 2, in: 3, amount: -1, mode: 'split' });
+  eq(guessMapping(BANK[hr]), { date: 0, time: -1, memo: 1, out: 2, in: 3, amount: -1, mode: 'split' });
 });
-test('가져오기: 카드 명세서 — 금액 열 하나', () => {
-  eq(guessMapping(['이용일', '이용가맹점', '이용금액', '할부']), { date: 0, memo: 1, out: -1, in: -1, amount: 2, mode: 'card' });
+test('가져오기: 카드 명세서 — 금액 열 하나, 따로 있는 시각 열', () => {
+  eq(guessMapping(['이용일', '이용가맹점', '이용금액', '할부']), { date: 0, time: -1, memo: 1, out: -1, in: -1, amount: 2, mode: 'card' });
+  eq(guessMapping(['승인일자', '승인시간', '가맹점명', '승인금액']), { date: 0, time: 1, memo: 2, out: -1, in: -1, amount: 3, mode: 'card' });
+});
+test('가져오기: 시각 읽기 (날짜 뒤 시각, 오전·오후, 엑셀 시각 숫자, 시각 없음)', () => {
+  eq([parseTime('09:12'), parseTime('2026.11.01 9:05:33'), parseTime('오후 3:05'), parseTime('12:30 AM'),
+      parseTime(0.5), parseTime(46329.75), parseTime(46329), parseTime('2026-11-01'), parseTime(''), parseTime('25:00')],
+     ['09:12', '09:05', '15:05', '00:30', '12:00', '18:00', null, null, null, null]);
 });
 test('가져오기: 날짜 여러 형식·엑셀 날짜 숫자', () => {
   eq([parseDate('2026-11-07'), parseDate('2026.11.7'), parseDate('2026/11/07 13:45'), parseDate('20261107'),
@@ -540,6 +562,10 @@ test('가져오기: 거래 목록 만들기 — 방향, 날짜 못 읽는 줄(�
     ['2026-11-05', '관리비', 230000, 'out'],
   ]);
   eq(r.skipped, [{ row: 7, reason: '날짜를 읽을 수 없음' }]);   // 7번째 줄 "합계"
+  eq(r.entries.map((e) => e.time), ['09:12', null, null]);       // 날짜 칸에 붙은 시각
+  const sep = buildEntries([['승인일자', '승인시간', '가맹점명', '승인금액'], ['2026-11-02', '13:47', '편의점', '4,500']], 0,
+    guessMapping(['승인일자', '승인시간', '가맹점명', '승인금액']));
+  eq([sep.entries[0].date, sep.entries[0].time], ['2026-11-02', '13:47']);
   // 카드: 양수 = 쓴 돈, 음수 = 환불(들어온 돈)
   const card = buildEntries([['이용일', '가맹점', '금액'], ['2026-11-02', '편의점', '4,500'], ['2026-11-04', '환불', '-4,500']], 0,
     { date: 0, memo: 1, amount: 2, mode: 'card' });
@@ -602,8 +628,8 @@ test('내보내기: 분개장 CSV는 분개 라인마다 한 줄, 날짜순, 차
     { id: 'aaaaaaaa-1', txn_date: '2026-11-01', memo: '개시', kind: 'opening', lines: [
       { account_id: 'cash', debit: 100, credit: 0, line_no: 1 }, { account_id: 'open', debit: 0, credit: 100, line_no: 2 }] },
   ], byId);
-  eq(rows[0], ['날짜', '전표 메모', '종류', '계정', '분류', '차변', '대변', '줄 메모', '전표 번호']);
-  eq(rows.slice(1).map((r) => [r[0], r[3], r[5], r[6]]), [
+  eq(rows[0], ['날짜', '시각', '전표 메모', '종류', '계정', '분류', '차변', '대변', '줄 메모', '전표 번호']);
+  eq(rows.slice(1).map((r) => [r[0], r[4], r[6], r[7]]), [
     ['2026-11-01', '현금', 100, ''], ['2026-11-01', '기초 순자산', '', 100],
     ['2026-11-05', '식비', 30000, ''], ['2026-11-05', '신용카드 > 주 사용 카드', '', 30000]]);
   const tbCsv = trialRows(trialBalance(TB_ROWS, { hideZero: true }));

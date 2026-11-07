@@ -102,7 +102,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- 입력 요소 ---------- */
 .field { display: grid; gap: 6px; }
 .field > span { font-size: 0.875rem; color: var(--muted); }
-input[type="text"], input[type="email"], input[type="password"], input[type="date"], select, textarea {
+input[type="text"], input[type="email"], input[type="password"], input[type="date"], input[type="time"],
+input[type="search"], select, textarea {
   width: 100%;
   min-height: 48px;
   padding: 10px 12px;

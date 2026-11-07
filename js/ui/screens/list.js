@@ -7,7 +7,7 @@
 
 import { h, append, replace, loading, errorBox, toast, withBusy } from '../dom.js';
 import { amountInput } from '../amount-input.js';
-import { state } from '../state.js';
+import { state, prefs } from '../state.js';
 import { accountFilterSelect, transactionCard } from '../widgets.js';
 import { indexAccounts } from '../../core/balance.js';
 import { formatAmount, parseAmount } from '../../core/money.js';
@@ -24,6 +24,7 @@ const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const filters = {
   ledgerId: null, period: 'thisMonth', from: '', to: '', accountId: '', query: '', min: '', max: '',
   trash: false, showAmount: false,
+  order: null,   // 'desc'(최신순) | 'asc'(오래된순) — 처음 열 때 기기에 저장한 값으로
 };
 
 export function render(view, ctx) {
@@ -35,6 +36,7 @@ export function render(view, ctx) {
     filters.trash = false;
   }
   const byId = indexAccounts(state.accounts);
+  filters.order ??= prefs.get('listOrder', 'desc');
   let rows = [];
   let total = 0;
   let timer = null;
@@ -120,12 +122,23 @@ export function render(view, ctx) {
               onChange: (_, t) => { filters.max = t; clearTimeout(timer); timer = setTimeout(search, 400); } })))
       : null;
 
+    // 정렬: 날짜·시각 기준 (시각 없는 전표는 그날 맨 앞으로 취급)
+    const orderTabs = h('div', { class: 'segmented', role: 'group', 'aria-label': '정렬' },
+      [['desc', '최신순 ↓'], ['asc', '오래된순 ↑']].map(([o, label]) =>
+        h('button', {
+          type: 'button', 'aria-pressed': String(filters.order === o),
+          onClick: () => {
+            if (filters.order === o) return;
+            filters.order = o; prefs.set('listOrder', o); drawFilters(); search();
+          },
+        }, label)));
+
     const reset = h('button', { class: 'btn small ghost', type: 'button', onClick: () => {
       Object.assign(filters, { period: 'thisMonth', from: '', to: '', accountId: '', query: '', min: '', max: '', showAmount: false });
       drawFilters(); search();
     } }, '필터 초기화');
 
-    replace(filterBox, periodTabs, custom, account, query,
+    replace(filterBox, periodTabs, custom, account, query, orderTabs,
       h('div', { class: 'row between' }, amountToggle, reset), amountRange);
   }
 
@@ -143,7 +156,7 @@ export function render(view, ctx) {
     const max = parseAmount(filters.max);
     return {
       ledgerId: state.ledgerId, ...range, accountId: filters.accountId, query: filters.query.trim(),
-      min: min || null, max: max || null, deleted: filters.trash, limit: PAGE, offset,
+      min: min || null, max: max || null, deleted: filters.trash, limit: PAGE, offset, order: filters.order,
     };
   }
 

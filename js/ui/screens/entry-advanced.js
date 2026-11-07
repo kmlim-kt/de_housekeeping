@@ -7,7 +7,7 @@
 import { h, replace, withBusy } from '../dom.js';
 import { amountInput } from '../amount-input.js';
 import { state } from '../state.js';
-import { validateJournal, toRpcLines, todayLocal, isValidDate } from '../../core/journal.js';
+import { validateJournal, toRpcLines, todayLocal, isValidDate, nowTimeLocal, isValidTime, formatTime } from '../../core/journal.js';
 import { postableAccounts, indexAccounts, describeLines, accountLabel, TYPE_LABELS, ACCOUNT_TYPES } from '../../core/balance.js';
 import { formatAmount } from '../../core/money.js';
 
@@ -35,6 +35,10 @@ export function advancedForm({ save, initial = null, submitLabel = '저장', hid
 
   // ---------- 날짜·메모 ----------
   const dateInput = h('input', { type: 'date', value: initial?.date ?? todayLocal(), required: true, 'aria-label': '날짜' });
+  // 시각: 새 입력은 지금 시각, 수정·반복 등록은 저장된 시각(없으면 빈칸). 비워 두면 "시각 없음"
+  const timeInput = h('input', { type: 'time', step: '60', 'aria-label': '시각',
+    value: initial ? formatTime(initial.time) : nowTimeLocal() });
+  timeInput.addEventListener('input', () => update());
   const memoInput = h('input', { type: 'text', maxlength: '200', placeholder: '예: 1월 급여', 'aria-label': '메모',
     enterkeyhint: 'done', value: initial?.memo ?? '' });
   dateInput.addEventListener('input', update);
@@ -58,7 +62,9 @@ export function advancedForm({ save, initial = null, submitLabel = '저장', hid
 
   const form = h('form', { class: 'stack', novalidate: true },
     h('div', { class: 'card stack' },
-      hideDate ? null : h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
+      hideDate ? null : h('div', { class: 'row-2' },
+        h('label', { class: 'field' }, h('span', {}, '날짜'), dateInput),
+        h('label', { class: 'field' }, h('span', {}, '시각'), timeInput)),
       h('label', { class: 'field' }, h('span', {}, '메모'), memoInput)),
     h('div', { class: 'row between' },
       h('h2', {}, '분개'),
@@ -144,10 +150,10 @@ export function advancedForm({ save, initial = null, submitLabel = '저장', hid
     const badLines = new Set(result.errors.filter((e) => e.line !== null).map((e) => e.line));
     linesBox.querySelectorAll('.je-line').forEach((el) => el.classList.toggle('invalid', badLines.has(Number(el.dataset.idx))));
 
-    const dateOk = isValidDate(dateInput.value);
+    const dateOk = isValidDate(dateInput.value) && isValidTime(timeInput.value);
     const ok = result.ok && dateOk;
     saveBtn.disabled = !ok;
-    if (!dateOk) hint.textContent = '날짜를 확인하세요.';
+    if (!dateOk) hint.textContent = '날짜와 시각을 확인하세요.';
     else if (result.count === 0) hint.textContent = '계정과 금액을 넣으면 차변·대변 합계가 바로 계산됩니다.';
     else if (result.ok) hint.textContent = '이렇게 기록됩니다: ' + describeLines(toRpcLines(lines), byId);
     else hint.textContent = result.errors[0]?.message ?? '';
@@ -161,6 +167,7 @@ export function advancedForm({ save, initial = null, submitLabel = '저장', hid
       id: pendingId,
       ledgerId: state.ledgerId,
       date: dateInput.value,
+      time: timeInput.value || null,
       memo: memoInput.value.trim(),
       // 고급 입력으로 고치면 간편 입력 모양이 아닐 수 있어 '직접 분개'로 (개시 잔액은 유지)
       kind: initial?.kind === 'opening' ? 'opening' : 'manual',
@@ -174,6 +181,7 @@ export function advancedForm({ save, initial = null, submitLabel = '저장', hid
       pendingId = crypto.randomUUID();
       lines = [emptyLine(), emptyLine()];
       memoInput.value = '';
+      timeInput.value = nowTimeLocal();   // 다음 입력은 다시 지금 시각
       drawLines(false);
     }
     update();

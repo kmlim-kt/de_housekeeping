@@ -128,6 +128,7 @@ export function render(view) {
       h('label', { class: 'field' }, h('span', {}, '머리글(제목) 줄'), headerSel),
       h('label', { class: 'field' }, h('span', {}, '이 파일은 어느 계좌·카드의 내역인가요?'), accSel),
       columnSelect('날짜 열', 'date'),
+      columnSelect('시각 열 (없으면 날짜 칸에 붙은 시각을 씀)', 'time', true),
       columnSelect('내용(가맹점·적요) 열', 'memo', true),
       h('label', { class: 'field' }, h('span', {}, '금액 방식'), modeSel),
       map.mode === 'split'
@@ -211,7 +212,7 @@ export function render(view) {
         return h('li', { class: 'stack', style: 'gap:6px' },
           h('div', { class: 'row between' },
             h('label', { class: 'row', style: 'gap:8px;min-height:44px' }, check,
-              h('span', {}, h('span', { class: 'small muted num' }, e.date + ' '), e.memo || '(내용 없음)')),
+              h('span', {}, h('span', { class: 'small muted num' }, `${e.date}${e.time ? ' ' + e.time : ''} `), e.memo || '(내용 없음)')),
             h('strong', { class: 'num ' + (e.direction === 'out' ? 'credit' : 'debit') },
               (e.direction === 'out' ? '−' : '+') + formatAmount(e.amount))),
           e.duplicate ? h('span', { class: 'badge' }, '이미 있는 거래일 수 있음') : null,
@@ -231,7 +232,7 @@ export function render(view) {
         const counter = byId.get(e.accountId);
         try {
           await createTransaction({
-            id: crypto.randomUUID(), ledgerId: state.ledgerId, date: e.date, memo: e.memo,
+            id: crypto.randomUUID(), ledgerId: state.ledgerId, date: e.date, time: e.time, memo: e.memo,
             kind: kindFor(e.direction, counter?.type, fileAcc?.type), source: 'import',
             lines: entryLines(e, fileAccountId, e.accountId),
           });

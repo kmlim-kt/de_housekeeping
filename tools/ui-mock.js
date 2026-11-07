@@ -118,13 +118,14 @@ const RPC = {
     for (const t of live()) if (p_from && t.txn_date < p_from) for (const l of t.lines) if (ids.has(l.account_id)) opening += l.debit - l.credit;
     let run = opening;
     return live().filter((t) => inRange(t, p_from, p_to) && t.lines.some((l) => ids.has(l.account_id)))
-      .sort((x, y) => x.txn_date.localeCompare(y.txn_date) || x.created_at.localeCompare(y.created_at))
+      .sort((x, y) => x.txn_date.localeCompare(y.txn_date)
+        || (x.txn_time ?? '00:00').localeCompare(y.txn_time ?? '00:00') || x.created_at.localeCompare(y.created_at))
       .map((t) => {
         const mine = t.lines.filter((l) => ids.has(l.account_id));
         const d = mine.reduce((x, l) => x + l.debit, 0);
         const c = mine.reduce((x, l) => x + l.credit, 0);
         run += d - c;
-        return { transaction_id: t.id, txn_date: t.txn_date, memo: t.memo, kind: t.kind, debit: d, credit: c,
+        return { transaction_id: t.id, txn_date: t.txn_date, txn_time: t.txn_time ?? null, memo: t.memo, kind: t.kind, debit: d, credit: c,
           running_balance: run * s, opening_balance: opening * s,
           counter_accounts: [...new Set(t.lines.filter((l) => !ids.has(l.account_id)).map((l) => byId().get(l.account_id).name))].join(', ') };
       });
@@ -132,11 +133,12 @@ const RPC = {
   search_transactions: (p) => {
     const q = (p.p_query || '').trim();
     const sub = p.p_account_id ? new Set(accounts.filter((a) => a.id === p.p_account_id || a.parent_id === p.p_account_id).map((a) => a.id)) : null;
+    const key = (t) => `${t.txn_date} ${(t.txn_time ?? '00:00').slice(0, 5)} ${t.created_at}`;
     const rows = txns.filter((t) => t.is_deleted === !!p.p_deleted && inRange(t, p.p_from, p.p_to)
       && (!sub || t.lines.some((l) => sub.has(l.account_id)))
       && (!q || t.memo.includes(q) || t.lines.some((l) => byId().get(l.account_id).name.includes(q)))
       && (p.p_min == null || total(t) >= p.p_min) && (p.p_max == null || total(t) <= p.p_max))
-      .sort((x, y) => y.txn_date.localeCompare(x.txn_date) || y.created_at.localeCompare(x.created_at));
+      .sort((x, y) => (p.p_order === 'asc' ? 1 : -1) * key(x).localeCompare(key(y)));
     return rows.slice(p.p_offset, p.p_offset + p.p_limit)
       .map((t) => ({ ...t, total: total(t), lines: t.lines, total_count: rows.length }));
   },
@@ -164,7 +166,7 @@ const RPC = {
     if (txns.some((t) => t.id === p.p_id)) return p.p_id;
     if (p.p_recurring_id) advanceRecurring(p.p_recurring_id, p.p_recurring_date);
     const ts = new Date().toISOString();
-    txns.push({ id: p.p_id, ledger_id: LEDGER, txn_date: p.p_date, memo: p.p_memo, kind: p.p_kind, source: p.p_source,
+    txns.push({ id: p.p_id, ledger_id: LEDGER, txn_date: p.p_date, txn_time: p.p_time ? p.p_time.slice(0, 5) + ':00' : null, memo: p.p_memo, kind: p.p_kind, source: p.p_source,
       is_deleted: false, deleted_at: null, created_at: ts, updated_at: ts, created_by: USER, updated_by: USER,
       lines: p.p_lines.map((l, i) => ({ account_id: l.account_id, debit: l.debit || 0, credit: l.credit || 0, memo: l.memo || '', line_no: i + 1 })) });
     audit.push({ id: audit.length + 1, transaction_id: p.p_id, action: 'create', changed_by: USER, changed_at: ts });
@@ -177,6 +179,7 @@ const RPC = {
     }
     const before = snapshot(t);
     Object.assign(t, { txn_date: p.p_date, memo: p.p_memo, kind: p.p_kind, updated_at: new Date().toISOString(),
+      txn_time: p.p_time === undefined || p.p_time === null ? t.txn_time : (p.p_time === '' ? null : p.p_time.slice(0, 5) + ':00'),
       lines: p.p_lines.map((l, i) => ({ account_id: l.account_id, debit: l.debit || 0, credit: l.credit || 0, memo: l.memo || '', line_no: i + 1 })) });
     audit.push({ id: audit.length + 1, transaction_id: t.id, action: 'update', before, after: snapshot(t), changed_by: USER, changed_at: t.updated_at });
     return t.updated_at;

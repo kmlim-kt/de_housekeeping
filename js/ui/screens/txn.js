@@ -11,7 +11,7 @@ import { state } from '../state.js';
 import { authorLabel } from '../widgets.js';
 import { simpleForm } from './entry-simple.js';
 import { advancedForm } from './entry-advanced.js';
-import { KIND_LABELS } from '../../core/journal.js';
+import { KIND_LABELS, formatTime } from '../../core/journal.js';
 import { indexAccounts, accountLabel, describeLines } from '../../core/balance.js';
 import { parseSimple, SIMPLE_FORMS } from '../../core/simple.js';
 import { formatAmount } from '../../core/money.js';
@@ -72,6 +72,7 @@ export function renderDetail(view, ctx, id) {
           h('h2', {}, t.memo || KIND_LABELS[t.kind] || '전표'),
           h('span', { class: 'amount-strong' }, formatAmount(total) + '원')),
         kv('날짜', t.txn_date),
+        kv('시각', formatTime(t.txn_time) || '시각 없음'),
         kv('종류', KIND_LABELS[t.kind] ?? t.kind),
         h('h3', { style: 'margin-top:8px' }, '분개'),
         h('div', { class: 'stack', style: 'gap:6px' }, lines.map((l) =>
@@ -125,6 +126,9 @@ function historySection(history, byId) {
         const b = e.before.transaction ?? {};
         const a = e.after.transaction ?? {};
         if (b.txn_date !== a.txn_date) changes.push(`날짜 ${b.txn_date} → ${a.txn_date}`);
+        if ((b.txn_time ?? null) !== (a.txn_time ?? null)) {
+          changes.push(`시각 ${formatTime(b.txn_time) || '없음'} → ${formatTime(a.txn_time) || '없음'}`);
+        }
         if (b.memo !== a.memo) changes.push(`메모 "${b.memo || ''}" → "${a.memo || ''}"`);
         const before = describeLines(e.before.lines ?? [], byId);
         const after = describeLines(e.after.lines ?? [], byId);
@@ -172,7 +176,7 @@ export function renderEdit(view, ctx, id) {
     async function save(payload) {
       try {
         await updateTransaction({
-          id: t.id, date: payload.date, memo: payload.memo, kind: payload.kind,
+          id: t.id, date: payload.date, time: payload.time ?? '', memo: payload.memo, kind: payload.kind,
           lines: payload.lines, expectedUpdatedAt: t.updated_at,
         });
         toast('수정했습니다. ' + describeLines(payload.lines, byId));
@@ -190,7 +194,7 @@ export function renderEdit(view, ctx, id) {
             h('button', { type: 'button', 'aria-pressed': String(mode === m),
               onClick: () => { if (mode !== m) { mode = m; drawForm(); } } }, label))
         : []);
-      const initial = { id: t.id, kind: t.kind, date: t.txn_date, memo: t.memo, lines: t.lines, values: simpleValues };
+      const initial = { id: t.id, kind: t.kind, date: t.txn_date, time: t.txn_time, memo: t.memo, lines: t.lines, values: simpleValues };
       replace(formBox, mode === 'simple'
         ? simpleForm({ save, initial, submitLabel: '수정 저장' })
         : advancedForm({ save, initial, submitLabel: '수정 저장' }));

@@ -45,12 +45,14 @@ export function guessHeaderRow(rows) {
 export function guessMapping(header) {
   const find = (re, skip = []) => header.findIndex((c, i) => !skip.includes(i) && re.test(c));
   const date = find(KEYWORDS.date);
-  const memo = find(KEYWORDS.memo, [date]);
-  const out = find(KEYWORDS.out, [date, memo]);
-  const inn = find(KEYWORDS.in, [date, memo, out]);
-  const amount = find(KEYWORDS.amount, [date, memo, out, inn]);
+  // 날짜와 따로 있는 시각 열 (예: "거래시간", "승인시각") — 날짜 열 이름에 "일시"가 있으면 보통 같은 칸에 있음
+  const time = find(/(시간|시각|time)/i, [date]);
+  const memo = find(KEYWORDS.memo, [date, time]);
+  const out = find(KEYWORDS.out, [date, time, memo]);
+  const inn = find(KEYWORDS.in, [date, time, memo, out]);
+  const amount = find(KEYWORDS.amount, [date, time, memo, out, inn]);
   const mode = out >= 0 || inn >= 0 ? 'split' : 'card';
-  return { date, memo, out, in: inn, amount, mode };
+  return { date, time, memo, out, in: inn, amount, mode };
 }
 
 /**
@@ -72,6 +74,32 @@ export function parseDate(v) {
   if (!m) return null;
   const out = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
   return isValidDate(out) ? out : null;
+}
+
+/**
+ * 시각 읽기: "09:12", "9:12:33", "2026.11.01 09:12"(날짜 뒤 시각), "오후 3:05", 엑셀 시각(0.5 = 12:00, 날짜+시각 46329.75)
+ * @returns {string|null} "HH:MM" (시각이 없으면 null)
+ */
+export function parseTime(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') {
+    const frac = v - Math.floor(v);
+    if (v >= 1 && frac === 0) return null;          // 날짜만 있는 엑셀 숫자
+    const mins = Math.round(frac * 24 * 60) % (24 * 60);
+    return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  }
+  const s = String(v).trim();
+  const m = s.match(/(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if (!m) {
+    const compact = s.match(/^\d{8}\s*(\d{2})(\d{2})(\d{2})?$/);   // 20261101 0912
+    return compact ? `${compact[1]}:${compact[2]}` : null;
+  }
+  let h = Number(m[2]);
+  const ampm = (m[1] || m[4] || '').toUpperCase();
+  if ((ampm === '오후' || ampm === 'PM') && h < 12) h += 12;
+  if ((ampm === '오전' || ampm === 'AM') && h === 12) h = 0;
+  if (h > 23 || Number(m[3]) > 59) return null;
+  return `${String(h).padStart(2, '0')}:${m[3]}`;
 }
 
 function excelSerial(n) {
@@ -103,7 +131,7 @@ export function parseMoney(v) {
  * @param {string[][]} rows 전체 줄
  * @param {number} headerRow 머리글 줄 번호
  * @param {{ date, memo, out, in, amount, mode }} map 열 번호와 금액 방식
- * @returns {{ entries: Array<{ row: number, date: string, memo: string, amount: number, direction: 'out'|'in' }>,
+ * @returns {{ entries: Array<{ row: number, date: string, time: string|null, memo: string, amount: number, direction: 'out'|'in' }>,
  *             skipped: Array<{ row: number, reason: string }> }}
  *   amount는 항상 양수, direction: out = 나간 돈(지출·카드 사용), in = 들어온 돈(입금·환불)
  */
@@ -126,8 +154,10 @@ export function buildEntries(rows, headerRow, map) {
       signed = map.mode === 'card' ? -a : a;   // 카드: 양수 = 쓴 돈
     }
     if (!signed) { skipped.push({ row, reason: '금액 0' }); return; }
+    // 시각: 시각 열이 있으면 그 열, 없으면 날짜 칸에 붙은 시각 (예: 2026.11.01 09:12)
+    const time = map.time >= 0 ? parseTime(r[map.time]) : parseTime(r[map.date]);
     entries.push({
-      row, date,
+      row, date, time,
       memo: String(r[map.memo] ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
       amount: Math.abs(signed),
       direction: signed < 0 ? 'out' : 'in',

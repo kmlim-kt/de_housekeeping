@@ -4,7 +4,7 @@
 
 import { h } from './dom.js';
 import { state } from './state.js';
-import { KIND_LABELS } from '../core/journal.js';
+import { KIND_LABELS, formatTime } from '../core/journal.js';
 import { buildAccountTree, accountLabel, ACCOUNT_TYPES, TYPE_LABELS } from '../core/balance.js';
 import { formatAmount } from '../core/money.js';
 
@@ -54,7 +54,7 @@ export function transactionCard(t, byId, { link = true, showDate = true } = {}) 
         h('span', { class: 'num' }, formatAmount(l.debit || l.credit))))),
     h('div', { class: 'row between small muted' },
       h('span', {}, KIND_LABELS[t.kind] ?? t.kind),
-      showDate ? h('span', { class: 'num' }, t.txn_date) : null),
+      h('span', { class: 'num' }, [showDate ? t.txn_date : '', formatTime(t.txn_time)].filter(Boolean).join(' '))),
   ];
   return link
     ? h('a', { class: 'txn txn-link', href: '#/txn/' + t.id }, inner)

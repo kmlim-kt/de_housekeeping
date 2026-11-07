@@ -5,7 +5,7 @@
 // =====================================================================
 
 import { accountLabel, TYPE_LABELS } from './balance.js';
-import { KIND_LABELS } from './journal.js';
+import { KIND_LABELS, formatTime, compareTransactions } from './journal.js';
 
 /**
  * 분개장: 분개 라인 한 줄이 CSV 한 줄 (같은 전표는 같은 전표 번호)
@@ -13,12 +13,12 @@ import { KIND_LABELS } from './journal.js';
  * @param {Map} byId 계정 맵
  */
 export function journalRows(transactions, byId) {
-  const rows = [['날짜', '전표 메모', '종류', '계정', '분류', '차변', '대변', '줄 메모', '전표 번호']];
-  const sorted = [...transactions].sort((a, b) => a.txn_date.localeCompare(b.txn_date) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
+  const rows = [['날짜', '시각', '전표 메모', '종류', '계정', '분류', '차변', '대변', '줄 메모', '전표 번호']];
+  const sorted = [...transactions].sort((a, b) => compareTransactions(a, b, 'asc'));
   for (const t of sorted) {
     for (const l of [...t.lines].sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))) {
       const acc = byId.get(l.account_id);
-      rows.push([t.txn_date, t.memo ?? '', KIND_LABELS[t.kind] ?? t.kind, accountLabel(acc, byId),
+      rows.push([t.txn_date, formatTime(t.txn_time), t.memo ?? '', KIND_LABELS[t.kind] ?? t.kind, accountLabel(acc, byId),
         TYPE_LABELS[acc?.type] ?? '', l.debit || '', l.credit || '', l.memo ?? '', String(t.id).slice(0, 8)]);
     }
   }
@@ -27,12 +27,13 @@ export function journalRows(transactions, byId) {
 
 /** 계정별 원장 (이월 → 거래 → 기말) */
 export function ledgerRows(accountName, rows, opening, closing) {
-  const out = [['날짜', '메모', '종류', '차변', '대변', '잔액', '상대 계정']];
-  if (opening !== null && opening !== undefined) out.push(['', `${accountName} 이월`, '', '', '', opening, '']);
+  const out = [['날짜', '시각', '메모', '종류', '차변', '대변', '잔액', '상대 계정']];
+  if (opening !== null && opening !== undefined) out.push(['', '', `${accountName} 이월`, '', '', '', opening, '']);
   for (const r of rows) {
-    out.push([r.txn_date, r.memo ?? '', KIND_LABELS[r.kind] ?? r.kind, r.debit || '', r.credit || '', r.running_balance, r.counter_accounts ?? '']);
+    out.push([r.txn_date, formatTime(r.txn_time), r.memo ?? '', KIND_LABELS[r.kind] ?? r.kind, r.debit || '', r.credit || '',
+      r.running_balance, r.counter_accounts ?? '']);
   }
-  out.push(['', '기말 잔액', '', '', '', closing, '']);
+  out.push(['', '', '기말 잔액', '', '', '', closing, '']);
   return out;
 }
 

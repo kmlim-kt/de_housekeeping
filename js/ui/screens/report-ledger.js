@@ -11,7 +11,7 @@ import { accountFilterSelect } from '../widgets.js';
 import { indexAccounts, accountLabel, isDebitNormal, TYPE_LABELS } from '../../core/balance.js';
 import { formatAmount } from '../../core/money.js';
 import { periodRange, PERIOD_LABELS, accountTotal, dayBefore } from '../../core/reports.js';
-import { KIND_LABELS } from '../../core/journal.js';
+import { KIND_LABELS, formatTime } from '../../core/journal.js';
 import { accountLedger, accountBalances } from '../../data/api.js';
 import { downloadCsv } from '../download.js';
 import { ledgerRows } from '../../core/exports.js';
@@ -83,7 +83,8 @@ export function render(view, ctx) {
         h('section', { class: 'card' },
           rows.length
             ? h('div', {}, rows.map((r) => h('a', { class: 'ledger-row', href: '#/txn/' + r.transaction_id },
-                h('span', {}, h('span', { class: 'small muted num' }, r.txn_date + ' '), r.memo || KIND_LABELS[r.kind] || '전표'),
+                h('span', {}, h('span', { class: 'small muted num' },
+                  `${r.txn_date}${r.txn_time ? ' ' + formatTime(r.txn_time) : ''} `), r.memo || KIND_LABELS[r.kind] || '전표'),
                 h('span', { class: 'num ' + (r.debit ? 'debit' : 'credit') },
                   (r.debit ? '차 ' : '대 ') + formatAmount(r.debit || r.credit)),
                 h('span', { class: 'sub' },

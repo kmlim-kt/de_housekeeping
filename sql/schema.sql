@@ -1,6 +1,6 @@
 -- =====================================================================
 -- 복식부기 가계부 — Supabase(PostgreSQL) 스키마
--- 버전: 4 (2: 거래 검색, 3: 월별 요약, 4: 백업 복원 restore_ledger·구성원 정보 ledger_members_info)
+-- 버전: 5 (2: 거래 검색, 3: 월별 요약, 4: 백업 복원·구성원 정보, 5: 거래 시각 txn_time·시간순 정렬)
 --
 -- 실행 방법: Supabase 대시보드 → SQL Editor → 이 파일 전체를 붙여넣고 Run
 -- 새 프로젝트에서 한 번만 실행합니다. (다시 실행하면 "already exists" 오류가 납니다)
@@ -109,6 +109,7 @@ create table public.transactions (
   id            uuid primary key,              -- 기기에서 생성한 UUID (중복 저장 방지)
   ledger_id     uuid not null references public.ledgers(id) on delete cascade,
   txn_date      date not null check (txn_date between '1900-01-01' and '2999-12-31'),
+  txn_time      time(0),                       -- 거래 시각(시:분, 기기 현지 시간). 없으면 그날 맨 앞으로 정렬
   memo          text not null default '' check (char_length(memo) <= 200),
   kind          text not null default 'manual'
                 check (kind in ('expense', 'income', 'transfer', 'card_payment',
@@ -600,7 +601,8 @@ create or replace function public.create_transaction(
   p_source          text,
   p_lines           jsonb,
   p_recurring_id    uuid default null,
-  p_recurring_date  date default null   -- 반복 거래 등록 시: 등록하려는 예정일
+  p_recurring_date  date default null,  -- 반복 거래 등록 시: 등록하려는 예정일
+  p_time            time default null   -- 거래 시각 (없으면 null)
 )
 returns uuid
 language plpgsql security definer
@@ -643,10 +645,10 @@ begin
   end if;
 
   insert into public.transactions
-    (id, ledger_id, txn_date, memo, kind, source, recurring_id, created_by, updated_by)
+    (id, ledger_id, txn_date, txn_time, memo, kind, source, recurring_id, created_by, updated_by)
   values
-    (p_id, p_ledger_id, p_date, coalesce(p_memo, ''), coalesce(p_kind, 'manual'),
-     coalesce(p_source, 'advanced'), p_recurring_id, v_uid, v_uid);
+    (p_id, p_ledger_id, p_date, date_trunc('minute', p_time::interval)::time, coalesce(p_memo, ''),
+     coalesce(p_kind, 'manual'), coalesce(p_source, 'advanced'), p_recurring_id, v_uid, v_uid);
 
   perform private.insert_lines(p_id, p_ledger_id, p_lines);
 
@@ -659,13 +661,15 @@ $$;
 
 -- 전표 수정 (분개 라인 전체 교체)
 -- p_expected_updated_at: 화면이 불러온 시점의 updated_at. 그 사이 다른 기기에서 고쳤으면 거부
+-- p_time: 'HH:MM' = 그 시각으로, '' = 시각 지우기, null(생략) = 그대로 둠 (시간 기능 이전 앱과 호환)
 create or replace function public.update_transaction(
   p_id                   uuid,
   p_date                 date,
   p_memo                 text,
   p_kind                 text,
   p_lines                jsonb,
-  p_expected_updated_at  timestamptz default null
+  p_expected_updated_at  timestamptz default null,
+  p_time                 text default null
 )
 returns timestamptz
 language plpgsql security definer
@@ -694,6 +698,9 @@ begin
 
   update public.transactions
      set txn_date = p_date, memo = coalesce(p_memo, ''), kind = coalesce(p_kind, kind),
+         txn_time = case when p_time is null then txn_time
+                         when p_time = '' then null
+                         else date_trunc('minute', p_time::time::interval)::time end,
          updated_by = v_uid, updated_at = clock_timestamp()
    where id = p_id;
 
@@ -907,7 +914,7 @@ create or replace function public.schema_version()
 returns integer
 language sql immutable
 set search_path = ''
-as $$ select 4; $$;
+as $$ select 5; $$;
 
 
 -- 백업 파일(JSON)을 새 장부로 복원
@@ -991,9 +998,9 @@ begin
   -- 전표 + 분개 라인 (차대 일치는 커밋 시점 트리거가 다시 검사)
   for v_t in select * from jsonb_array_elements(coalesce(p_data->'transactions', '[]'::jsonb)) loop
     v_tid := gen_random_uuid();
-    insert into public.transactions (id, ledger_id, txn_date, memo, kind, source, recurring_id,
+    insert into public.transactions (id, ledger_id, txn_date, txn_time, memo, kind, source, recurring_id,
                                      is_deleted, deleted_at, created_by, updated_by, created_at, updated_at)
-    values (v_tid, v_ledger, (v_t->>'txn_date')::date, coalesce(v_t->>'memo', ''),
+    values (v_tid, v_ledger, (v_t->>'txn_date')::date, (nullif(v_t->>'txn_time', ''))::time, coalesce(v_t->>'memo', ''),
             coalesce(v_t->>'kind', 'manual'), coalesce(v_t->>'source', 'advanced'),
             (v_rmap->>(v_t->>'recurring_id'))::uuid,
             coalesce((v_t->>'is_deleted')::boolean, false), (v_t->>'deleted_at')::timestamptz,
@@ -1128,6 +1135,7 @@ create or replace function public.account_ledger(
 returns table (
   transaction_id   uuid,
   txn_date         date,
+  txn_time         time,
   memo             text,
   kind             text,
   debit            bigint,
@@ -1155,7 +1163,7 @@ as $$
        and p_from is not null and t.txn_date < p_from
   ),
   txns as (
-    select t.id, t.txn_date, t.created_at, t.memo, t.kind,
+    select t.id, t.txn_date, t.txn_time, t.created_at, t.memo, t.kind,
            sum(l.debit)::bigint as d, sum(l.credit)::bigint as c
       from public.lines l
       join public.transactions t on t.id = l.transaction_id
@@ -1163,16 +1171,17 @@ as $$
        and not t.is_deleted
        and (p_from is null or t.txn_date >= p_from)
        and (p_to   is null or t.txn_date <= p_to)
-     group by t.id, t.txn_date, t.created_at, t.memo, t.kind
+     group by t.id, t.txn_date, t.txn_time, t.created_at, t.memo, t.kind
   )
-  select r.id, r.txn_date, r.memo, r.kind, r.d, r.c,
-         ((o.v + sum(r.d - r.c) over (order by r.txn_date, r.created_at, r.id)) * g.s)::bigint,
+  -- 같은 날은 시각 순(시각 없는 전표는 그날 맨 앞), 같은 시각은 입력 순
+  select r.id, r.txn_date, r.txn_time, r.memo, r.kind, r.d, r.c,
+         ((o.v + sum(r.d - r.c) over (order by r.txn_date, coalesce(r.txn_time, '00:00'::time), r.created_at, r.id)) * g.s)::bigint,
          (select string_agg(distinct a2.name, ', ')
             from public.lines l2 join public.accounts a2 on a2.id = l2.account_id
            where l2.transaction_id = r.id and l2.account_id not in (select id from acc)),
          (o.v * g.s)::bigint
     from txns r cross join opening o cross join sgn g
-   order by r.txn_date, r.created_at, r.id;
+   order by r.txn_date, coalesce(r.txn_time, '00:00'::time), r.created_at, r.id;
 $$;
 
 -- 장부 검증: 차대 합계 일치, 불균형 전표, 회계 등식(자산 = 부채 + 순자산 + 당기 손익)
@@ -1224,6 +1233,7 @@ $$;
 
 -- 전표 검색 (분개장 화면)
 --   기간, 계정(상위 계정이면 하위 포함), 검색어(메모·계정 이름), 금액 범위(전표 합계), 휴지통 여부
+--   p_order: 'desc'(최신 먼저, 기본) | 'asc'(오래된 것 먼저) — 날짜 → 시각(없으면 그날 맨 앞) → 입력 순
 --   결과마다 분개 라인(jsonb)과 전체 건수(total_count)를 함께 돌려줌
 create or replace function public.search_transactions(
   p_ledger_id   uuid,
@@ -1235,11 +1245,13 @@ create or replace function public.search_transactions(
   p_max         bigint  default null,
   p_deleted     boolean default false,
   p_limit       integer default 50,
-  p_offset      integer default 0
+  p_offset      integer default 0,
+  p_order       text    default 'desc'
 )
 returns table (
   id           uuid,
   txn_date     date,
+  txn_time     time,
   memo         text,
   kind         text,
   source       text,
@@ -1281,7 +1293,7 @@ as $$
      where (p_min is null or total >= p_min)
        and (p_max is null or total <= p_max)
   )
-  select f.id, f.txn_date, f.memo, f.kind, f.source, f.created_by, f.updated_by,
+  select f.id, f.txn_date, f.txn_time, f.memo, f.kind, f.source, f.created_by, f.updated_by,
          f.created_at, f.updated_at, f.deleted_at, f.total,
          coalesce((select jsonb_agg(jsonb_build_object(
                      'account_id', l.account_id, 'debit', l.debit, 'credit', l.credit,
@@ -1289,7 +1301,12 @@ as $$
                      from public.lines l where l.transaction_id = f.id), '[]'::jsonb),
          count(*) over ()
     from filtered f
-   order by f.txn_date desc, f.created_at desc, f.id
+   order by
+     -- 오름차순일 때만 앞의 세 기준이 쓰이고, 내림차순이면 이 세 값이 모두 null이라 뒤의 기준이 쓰임
+     case when p_order = 'asc' then f.txn_date end asc,
+     case when p_order = 'asc' then coalesce(f.txn_time, '00:00'::time) end asc,
+     case when p_order = 'asc' then f.created_at end asc,
+     f.txn_date desc, coalesce(f.txn_time, '00:00'::time) desc, f.created_at desc, f.id
    limit least(greatest(coalesce(p_limit, 50), 1), 500)
   offset greatest(coalesce(p_offset, 0), 0);
 $$;
