@@ -10,6 +10,8 @@ import { statementBlock } from '../statement.js';
 import { formatAmount } from '../../core/money.js';
 import { incomeStatement, monthRange, shiftMonth, currentMonth, pctChange } from '../../core/reports.js';
 import { accountBalances } from '../../data/api.js';
+import { downloadCsv } from '../download.js';
+import { statementRows } from '../../core/exports.js';
 
 export function render(view) {
   let unit = prefs.get('isUnit', 'month');     // 'month' | 'year'
@@ -19,10 +21,20 @@ export function render(view) {
   const unitTabs = h('div', { class: 'segmented', role: 'group', 'aria-label': '기간 단위' });
   const nav = h('div', { class: 'row between' });
   const body = h('div', { class: 'stack' });
+  let last = null;   // CSV용 마지막 계산 결과
+  const csvBtn = h('button', { class: 'btn small', type: 'button', onClick: () => {
+    if (!last) return;
+    const { is, label, title } = last;
+    downloadCsv(`손익계산서-${title}`, statementRows([
+      { title: '수익', rows: is.income, total: is.totals.income },
+      { title: '비용', rows: is.expense, total: is.totals.expense },
+      { title: '당기순이익', rows: [], total: is.totals.net }], label));
+  } }, 'CSV');
 
   append(view,
-    h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
-      h('h1', { class: 'view-title' }, '손익계산서')),
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
+        h('h1', { class: 'view-title' }, '손익계산서')), csvBtn),
     h('div', { class: 'stack' }, h('div', { class: 'card stack' }, unitTabs, nav), body));
 
   drawControls();
@@ -57,6 +69,7 @@ export function render(view) {
         accountBalances(state.ledgerId, prev.from, prev.to),
       ]);
       const is = incomeStatement(rows, prevRows);
+      last = { is, label, title: unit === 'month' ? month : String(year) };
       const t = is.totals;
       const netPct = pctChange(t.net.amount, t.net.previous);
       replace(body,

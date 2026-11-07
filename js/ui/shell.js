@@ -20,6 +20,9 @@ import * as reportIs from './screens/report-is.js';
 import * as reportBudget from './screens/report-budget.js';
 import * as recurring from './screens/recurring.js';
 import * as favorites from './screens/favorites.js';
+import * as dataScreen from './screens/data.js';
+import * as importScreen from './screens/import.js';
+import * as ledgerScreen from './screens/ledger.js';
 
 // 탭 아이콘 (24x24 선 아이콘 경로)
 const ICONS = {
@@ -53,6 +56,9 @@ const ROUTES = {
   'settings/recurring': recurring.renderList,
   'settings/recurring/new': (view, c) => recurring.renderEditor(view, c, null),
   'settings/favorites': favorites.render,
+  'settings/data': dataScreen.render,
+  'settings/import': importScreen.render,
+  'settings/ledger': ledgerScreen.render,
   settings: settings.render,
   'settings/accounts': accounts.render,
   opening: opening.render,

@@ -15,6 +15,8 @@ import { budgetReport, figures } from '../../core/budget.js';
 import { buildAccountTree } from '../../core/balance.js';
 import { monthRange, shiftMonth, currentMonth } from '../../core/reports.js';
 import { listBudgets, saveBudget, copyBudgets, accountBalances } from '../../data/api.js';
+import { downloadCsv } from '../download.js';
+import { budgetRows } from '../../core/exports.js';
 
 export function render(view) {
   let month = currentMonth();
@@ -26,9 +28,13 @@ export function render(view) {
   const summary = h('div');
   const list = h('div', { class: 'stack' });
 
+  const csvBtn = h('button', { class: 'btn small', type: 'button', onClick: () =>
+    downloadCsv(`예산-${month}`, budgetRows(budgetReport(budgets, rows, state.accounts))) }, 'CSV');
+
   append(view,
-    h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
-      h('h1', { class: 'view-title' }, '예산')),
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
+        h('h1', { class: 'view-title' }, '예산')), csvBtn),
     h('div', { class: 'stack' }, h('div', { class: 'card' }, nav), summary, list,
       h('p', { class: 'small muted' },
         '금액을 넣으면 자동으로 저장됩니다. 빈칸으로 두면 예산이 없는 항목입니다. 상위 계정(예: 식비)에 예산을 넣으면 하위 계정(외식·장보기) 지출을 합쳐서 비교합니다.')));

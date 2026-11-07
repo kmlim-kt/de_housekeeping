@@ -55,7 +55,9 @@ export function render(view) {
         h('div', { class: 'stack', style: 'gap:4px' },
           h('span', { class: 'small muted' }, '장부 ID (보안 점검할 때 사용)'),
           h('div', { class: 'row between' }, h('code', { class: 'small', style: 'word-break:break-all' }, state.ledgerId), copyBtn)),
-        h('p', { class: 'small muted' }, '가족 초대·구성원 관리 화면은 이후 단계에서 추가합니다.')),
+        h('a', { class: 'btn block', href: '#/settings/ledger' }, '장부·가족 (초대·구성원·새 장부)')),
+      h('a', { class: 'card row between', href: '#/settings/data', style: 'text-decoration:none;color:inherit;min-height:56px' },
+        h('span', {}, '데이터 관리 (백업·복원·CSV·내역 가져오기)'), h('span', { class: 'muted' }, '›')),
 
       h('a', { class: 'card row between', href: '#/settings/accounts', style: 'text-decoration:none;color:inherit;min-height:56px' },
         h('span', {}, '계정과목 (추가·수정·숨김)'), h('span', { class: 'muted' }, `${state.accounts.length}개 ›`)),

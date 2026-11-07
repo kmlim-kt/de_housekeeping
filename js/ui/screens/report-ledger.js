@@ -13,6 +13,8 @@ import { formatAmount } from '../../core/money.js';
 import { periodRange, PERIOD_LABELS, accountTotal, dayBefore } from '../../core/reports.js';
 import { KIND_LABELS } from '../../core/journal.js';
 import { accountLedger, accountBalances } from '../../data/api.js';
+import { downloadCsv } from '../download.js';
+import { ledgerRows } from '../../core/exports.js';
 
 export function render(view, ctx) {
   const byId = indexAccounts(state.accounts);
@@ -26,10 +28,16 @@ export function render(view, ctx) {
   });
   const periodTabs = h('div', { class: 'segmented kinds', role: 'group', 'aria-label': '기간' });
   const body = h('div', { class: 'stack' });
+  let last = null;   // CSV용
+  const csvBtn = h('button', { class: 'btn small', type: 'button', onClick: () => {
+    if (!last) return;
+    downloadCsv(`원장-${last.name}-${period}`, ledgerRows(last.name, last.rows, last.opening, last.closing));
+  } }, 'CSV');
 
   append(view,
-    h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
-      h('h1', { class: 'view-title' }, '계정별 원장')),
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
+        h('h1', { class: 'view-title' }, '계정별 원장')), csvBtn),
     h('div', { class: 'stack' }, h('div', { class: 'card stack' }, picker, periodTabs), body));
 
   drawPeriods();
@@ -55,6 +63,7 @@ export function render(view, ctx) {
       ]);
       const opening = startRows ? accountTotal(startRows, accountId) : null;
       const closing = accountTotal(endRows, accountId);
+      last = { name: accountLabel(acc, byId).replace(/\s*>\s*/g, '-'), rows, opening, closing };
       const debitSum = rows.reduce((s, r) => s + r.debit, 0);
       const creditSum = rows.reduce((s, r) => s + r.credit, 0);
       const sideNote = isDebitNormal(acc.type) ? '차변이 늘면 잔액 증가' : '대변이 늘면 잔액 증가';

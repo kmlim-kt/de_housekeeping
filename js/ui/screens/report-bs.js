@@ -11,6 +11,8 @@ import { formatAmount } from '../../core/money.js';
 import { balanceSheet, previousMonthEnd } from '../../core/reports.js';
 import { todayLocal, isValidDate } from '../../core/journal.js';
 import { accountBalances } from '../../data/api.js';
+import { downloadCsv } from '../download.js';
+import { statementRows } from '../../core/exports.js';
 
 export function render(view) {
   let asOf = todayLocal();
@@ -23,10 +25,20 @@ export function render(view) {
       compare = e.target.checked; prefs.set('bsCompare', compare); load();
     } }), '전월 말과 비교');
   const body = h('div', { class: 'stack' });
+  let last = null;   // CSV용 마지막 계산 결과
+  const csvBtn = h('button', { class: 'btn small', type: 'button', onClick: () => {
+    if (!last) return;
+    const { bs, label } = last;
+    downloadCsv(`재무상태표-${asOf}`, statementRows([
+      { title: '자산', rows: bs.assets, total: bs.totals.assets },
+      { title: '부채', rows: bs.liabilities, total: bs.totals.liabilities },
+      { title: '순자산', rows: bs.equity, total: bs.totals.equity }], label));
+  } }, 'CSV');
 
   append(view,
-    h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
-      h('h1', { class: 'view-title' }, '재무상태표')),
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
+        h('h1', { class: 'view-title' }, '재무상태표')), csvBtn),
     h('div', { class: 'stack' },
       h('div', { class: 'card stack' },
         h('label', { class: 'field' }, h('span', {}, '기준일'), dateInput), compareToggle),
@@ -43,6 +55,7 @@ export function render(view) {
       ]);
       const bs = balanceSheet(rows, prevRows);
       const label = compare ? `전월 말(${prevDate.slice(5).replace('-', '/')})` : null;
+      last = { bs, label };
       const t = bs.totals;
       replace(body,
         h('section', { class: 'card stack' },

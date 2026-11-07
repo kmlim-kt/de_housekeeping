@@ -141,6 +141,25 @@ const RPC = {
       .map((t) => ({ ...t, total: total(t), lines: t.lines, total_count: rows.length }));
   },
   skip_recurring: ({ p_id, p_date }) => advanceRecurring(p_id, p_date),
+  ledger_members_info: () => [
+    { user_id: USER, email: 'mock@example.com', role: 'owner', joined_at: '2026-11-01T00:00:00Z', is_me: true },
+    { user_id: '00000000-0000-4000-8000-0000000000cc', email: 'spouse@example.com', role: 'member', joined_at: '2026-11-03T00:00:00Z', is_me: false },
+  ],
+  create_invite: ({ p_email }) => {
+    const code = 'AB3CD5EF7G';
+    tables.ledger_invites.push({ id: uuid(), ledger_id: LEDGER, code, email: p_email, created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 7 * 86400000).toISOString(), used_at: null });
+    return code;
+  },
+  accept_invite: () => { throw { message: '초대 코드가 없거나 만료되었습니다.', code: '22023' }; },
+  set_member_role: () => null,
+  remove_member: () => null,
+  create_ledger: () => uuid(),
+  restore_ledger: ({ p_name, p_data }) => {
+    restored.push({ name: p_name, data: p_data });
+    return { ledger_id: LEDGER, accounts: p_data.accounts.length, transactions: p_data.transactions.length,
+      budgets: (p_data.budgets ?? []).length, recurring: (p_data.recurring ?? []).length, favorites: (p_data.favorites ?? []).length };
+  },
   create_transaction: (p) => {
     if (txns.some((t) => t.id === p.p_id)) return p.p_id;
     if (p.p_recurring_id) advanceRecurring(p.p_recurring_id, p.p_recurring_date);
@@ -174,8 +193,10 @@ const RPC = {
   },
 };
 
-// 단순 테이블 (예산·반복 거래·즐겨찾기)
-const tables = { budgets: [], recurring: [], favorites: [] };
+// 단순 테이블 (예산·반복 거래·즐겨찾기·초대)
+const tables = { budgets: [], recurring: [], favorites: [], ledger_invites: [] };
+let ledgerName = '모의 장부';
+const restored = [];   // 모의 복원 기록
 
 /** supabase.from(...) 흉내: eq 필터 + select/insert/update/upsert/delete, await 하면 결과 */
 function fromMock(table) {
@@ -185,6 +206,7 @@ function fromMock(table) {
   let op = 'select';
   let payload = null;
   let conflict = null;
+  let rangeFrom = 0;
   const match = (row) => Object.entries(f).every(([k, v]) => row[k] === v);
   const chain = {
     select: () => chain,
@@ -194,6 +216,8 @@ function fromMock(table) {
     upsert: (p, o) => { op = 'upsert'; payload = p; conflict = o?.onConflict?.split(','); return chain; },
     delete: () => { op = 'delete'; return chain; },
     eq: (col, val) => { f[col] = val; return chain; },
+    is: (col, val) => { f[col] = val; return chain; },
+    range: (a, b) => { rangeFrom = a; limit = b - a + 1; return chain; },
     limit: (k) => { limit = k; return chain; },
     maybeSingle: () => { single = true; return chain; },
     single: () => { single = true; return chain; },
@@ -221,7 +245,10 @@ function fromMock(table) {
           || String(a.next_date ?? '').localeCompare(String(b.next_date ?? '')));
       } else if (table === 'transactions') {
         data = txns.filter((t) => (!f.id || t.id === f.id) && (f.is_deleted === undefined || t.is_deleted === f.is_deleted))
-          .sort((x, y) => y.txn_date.localeCompare(x.txn_date) || y.created_at.localeCompare(x.created_at)).slice(0, limit);
+          .sort((x, y) => y.txn_date.localeCompare(x.txn_date) || y.created_at.localeCompare(x.created_at))
+          .slice(rangeFrom, rangeFrom + limit);
+      } else if (table === 'ledgers') {
+        if (op === 'update') { ledgerName = payload.name; data = [{ id: LEDGER }]; }
       } else if (table === 'audit_log') {
         data = audit.filter((e) => e.transaction_id === f.transaction_id).slice().reverse();
       } else if (table === 'accounts') {
@@ -276,6 +303,7 @@ export async function startMock(route = 'list') {
     switchLedger: async () => {},
     reloadAccounts: async () => setState({ accounts: [...accounts] }),
     reloadFavorites: async () => setState({ favorites: structuredClone(tables.favorites.slice().sort((a, b) => a.sort_order - b.sort_order)) }),
+    reloadLedgers: async () => setState({ ledgers: [{ id: LEDGER, name: ledgerName, role: 'owner' }] }),
   });
-  return { acc, txns, accounts, audit, tables };
+  return { acc, txns, accounts, audit, tables, restored };
 }

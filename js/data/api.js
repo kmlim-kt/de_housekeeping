@@ -333,6 +333,84 @@ export async function monthlySummary(ledgerId, months, end) {
   return call(supabase.rpc('monthly_summary', { p_ledger_id: ledgerId, p_months: months, p_end: end }));
 }
 
+// ---------------------------------------------------------------------
+// 백업·복원
+// ---------------------------------------------------------------------
+
+/** 장부의 모든 전표(휴지통 포함, 분개 라인 포함) — 1000건씩 나눠 받음 */
+export async function fetchAllTransactions(ledgerId, onProgress) {
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const page = await call(supabase.from('transactions')
+      .select('id, txn_date, memo, kind, source, recurring_id, is_deleted, deleted_at, created_at, lines(account_id, debit, credit, memo, line_no)')
+      .eq('ledger_id', ledgerId).order('created_at').order('id').range(from, from + 999));
+    all.push(...page);
+    onProgress?.(all.length);
+    if (page.length < 1000) return all;
+  }
+}
+
+/** 장부의 모든 예산 (모든 달) */
+export async function listAllBudgets(ledgerId) {
+  return call(supabase.from('budgets').select('account_id, month, amount').eq('ledger_id', ledgerId));
+}
+
+/** 백업을 새 장부로 복원 → { ledger_id, accounts, transactions, ... } */
+export async function restoreLedger(name, data) {
+  return call(supabase.rpc('restore_ledger', { p_name: name, p_data: data }));
+}
+
+// ---------------------------------------------------------------------
+// 장부·구성원·초대
+// ---------------------------------------------------------------------
+
+export async function createLedger(name) {
+  return call(supabase.rpc('create_ledger', { p_name: name }));
+}
+
+export async function renameLedger(id, name) {
+  return call(supabase.from('ledgers').update({ name: name.trim() }).eq('id', id).select('id').single());
+}
+
+/** 장부 삭제 (소유자만, 계정·전표 등 모두 함께 삭제됨) */
+export async function deleteLedger(id) {
+  return call(supabase.from('ledgers').delete().eq('id', id));
+}
+
+/** 구성원 목록 (이메일 포함) */
+export async function membersInfo(ledgerId) {
+  return call(supabase.rpc('ledger_members_info', { p_ledger_id: ledgerId }));
+}
+
+export async function setMemberRole(ledgerId, userId, role) {
+  return call(supabase.rpc('set_member_role', { p_ledger_id: ledgerId, p_user_id: userId, p_role: role }));
+}
+
+/** 구성원 내보내기 / 스스로 나가기 */
+export async function removeMember(ledgerId, userId) {
+  return call(supabase.rpc('remove_member', { p_ledger_id: ledgerId, p_user_id: userId }));
+}
+
+/** 초대 코드 만들기 (소유자만) → 코드 */
+export async function createInvite(ledgerId, email = null) {
+  return call(supabase.rpc('create_invite', { p_ledger_id: ledgerId, p_email: email || null }));
+}
+
+/** 아직 쓰지 않은 초대 코드 (소유자만 보임) */
+export async function listInvites(ledgerId) {
+  return call(supabase.from('ledger_invites').select('id, code, email, created_at, expires_at, used_at')
+    .eq('ledger_id', ledgerId).is('used_at', null).order('created_at', { ascending: false }));
+}
+
+export async function deleteInvite(id) {
+  return call(supabase.from('ledger_invites').delete().eq('id', id));
+}
+
+/** 초대 코드로 합류 → 합류한 장부 id */
+export async function acceptInvite(code) {
+  return call(supabase.rpc('accept_invite', { p_code: code }));
+}
+
 /** DB 스키마 버전 (업데이트 SQL을 실행했는지 확인) */
 export async function schemaVersion() {
   return call(supabase.rpc('schema_version'));

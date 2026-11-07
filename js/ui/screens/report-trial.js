@@ -12,6 +12,8 @@ import { formatAmount } from '../../core/money.js';
 import { trialBalance } from '../../core/reports.js';
 import { todayLocal, isValidDate } from '../../core/journal.js';
 import { accountBalances } from '../../data/api.js';
+import { downloadCsv } from '../download.js';
+import { trialRows } from '../../core/exports.js';
 
 export function render(view) {
   let asOf = todayLocal();
@@ -26,9 +28,15 @@ export function render(view) {
     } }), '거래 없는 계정 숨기기');
   const body = h('div', { class: 'stack' });
 
+  const csvBtn = h('button', { class: 'btn small', type: 'button', onClick: () => {
+    if (!raw) return;
+    downloadCsv(`시산표-${asOf}`, trialRows(trialBalance(raw, { hideZero })));
+  } }, 'CSV');
+
   append(view,
-    h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
-      h('h1', { class: 'view-title' }, '시산표')),
+    h('div', { class: 'row between' },
+      h('div', { class: 'row' }, h('a', { href: '#/reports', class: 'btn small ghost' }, '‹ 보고서'),
+        h('h1', { class: 'view-title' }, '시산표')), csvBtn),
     h('div', { class: 'stack' },
       h('div', { class: 'card stack' },
         h('label', { class: 'field' }, h('span', {}, '기준일 (이 날까지 누계)'), dateInput), zeroToggle),

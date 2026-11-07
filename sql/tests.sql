@@ -26,6 +26,7 @@ declare
   ub  uuid := '00000000-0000-0000-0000-00000000000b';
   la  uuid;   -- A의 장부
   lb  uuid;   -- B의 장부
+  lr  uuid;   -- 백업에서 복원한 장부
   -- A 장부의 계정
   a_cash uuid; a_bank_parent uuid; a_bank uuid; a_card uuid; a_food uuid;
   a_open uuid; a_loan uuid; a_interest uuid; a_salary uuid; a_tax uuid; a_eat_out uuid; a_house uuid;
@@ -556,10 +557,83 @@ begin
   end;
   assert failed, '❌ [공유] member는 초대 코드를 만들 수 없어야 함';
 
+  -- 구성원 정보: 합류한 B도 이메일이 보이는 구성원 목록을 볼 수 있음
+  select count(*) into n from public.ledger_members_info(la);
+  assert n = 2, format('❌ [구성원] A 장부 구성원 2명 (실제 %s)', n);
+  select email into v_code from public.ledger_members_info(la) where is_me;
+  assert v_code = 'test-b@example.com', '❌ [구성원] 내 이메일이 보여야 함';
+
   -- B가 스스로 나가면 다시 볼 수 없음
   perform public.remove_member(la, ub);
   select count(*) into n from public.accounts where ledger_id = la;
   assert n = 0, '❌ [공유] 나간 뒤에는 A의 장부를 볼 수 없어야 함';
+  failed := false;
+  begin
+    perform public.ledger_members_info(la);
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [RLS] 나간 B는 A 장부의 구성원 목록을 볼 수 없어야 함';
+
+  ------------------------------------------------------------------
+  -- 7-1. 백업 → 새 장부로 복원 (A)
+  ------------------------------------------------------------------
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', ua, 'email', 'test-a@example.com', 'role', 'authenticated')::text, true);
+  -- 즐겨찾기 틀에 계정 id가 들어 있는 경우 (복원 시 새 id로 바뀌어야 함)
+  insert into public.favorites (ledger_id, name, template)
+  values (la, '외식 현금', jsonb_build_object('mode', 'simple', 'kind', 'expense',
+          'values', jsonb_build_object('expenseId', a_eat_out, 'sourceId', a_cash, 'amount', 12000)));
+  -- 앱의 [백업]과 같은 모양으로 만들기
+  select jsonb_build_object(
+    'format', 'de-housekeeping-backup', 'version', 1, 'exported_at', now(),
+    'accounts', (select jsonb_agg(to_jsonb(a)) from public.accounts a where a.ledger_id = la),
+    'transactions', (select jsonb_agg(to_jsonb(t) || jsonb_build_object('lines',
+        (select jsonb_agg(to_jsonb(l) order by l.line_no) from public.lines l where l.transaction_id = t.id)))
+        from public.transactions t where t.ledger_id = la),
+    'budgets', (select coalesce(jsonb_agg(to_jsonb(b)), '[]') from public.budgets b where b.ledger_id = la),
+    'recurring', (select coalesce(jsonb_agg(to_jsonb(rr)), '[]') from public.recurring rr where rr.ledger_id = la),
+    'favorites', (select coalesce(jsonb_agg(to_jsonb(f)), '[]') from public.favorites f where f.ledger_id = la))
+  into r;
+
+  lr := (public.restore_ledger('복원 테스트', r)->>'ledger_id')::uuid;
+  assert lr is not null and lr <> la, '❌ [복원] 새 장부가 만들어져야 함';
+  select count(*) into n from public.accounts where ledger_id = lr;
+  assert n = (select count(*) from public.accounts where ledger_id = la), '❌ [복원] 계정 수가 같아야 함';
+  select count(*) into n from public.transactions where ledger_id = lr;
+  assert n = (select count(*) from public.transactions where ledger_id = la), '❌ [복원] 전표 수가 같아야 함';
+  assert (public.ledger_check(lr)->>'net_worth') = (public.ledger_check(la)->>'net_worth'),
+    '❌ [복원] 순자산이 원래 장부와 같아야 함: ' || public.ledger_check(lr)::text;
+  assert (public.ledger_check(lr)->>'total_debit') = (public.ledger_check(la)->>'total_debit'),
+    '❌ [복원] 차변 합계가 원래 장부와 같아야 함';
+  assert (public.ledger_check(lr)->>'equation_ok')::boolean, '❌ [복원] 회계 등식 성립';
+  select count(*) into n from public.accounts where ledger_id = lr and id in (select id from public.accounts where ledger_id = la);
+  assert n = 0, '❌ [복원] 계정 id는 모두 새로 만들어져야 함';
+  -- 즐겨찾기 틀의 계정 id가 새 장부의 "외식" 계정으로 바뀌었는지
+  select (template->'values'->>'expenseId')::uuid into t_tmp from public.favorites where ledger_id = lr and name = '외식 현금';
+  select count(*) into n from public.accounts where id = t_tmp and ledger_id = lr and name = '외식';
+  assert n = 1, '❌ [복원] 즐겨찾기 안의 계정 id가 새 장부 계정으로 바뀌어야 함';
+  select count(*) into n from public.budgets where ledger_id = lr;
+  assert n = 1, format('❌ [복원] 예산 1건 (실제 %s)', n);
+  select role into v_code from public.ledger_members where ledger_id = lr and user_id = ua;
+  assert v_code = 'owner', '❌ [복원] 복원한 사람이 새 장부의 소유자';
+
+  -- 잘못된 파일·차대가 맞지 않는 백업은 아무것도 만들지 않음
+  select count(*) into n from public.ledgers;
+  failed := false;
+  begin
+    perform public.restore_ledger('x', '{"format":"other"}');
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [복원] 가계부 백업 파일이 아니면 거부';
+  failed := false;
+  begin
+    perform public.restore_ledger('x', jsonb_set(r, '{transactions,0,lines,0,debit}', '999'));
+    set constraints all immediate;
+  exception when others then failed := true;
+  end;
+  assert failed, '❌ [복원] 차대가 맞지 않는 전표가 있으면 거부';
+  assert (select count(*) from public.ledgers) = n, '❌ [복원] 실패하면 장부가 만들어지지 않아야 함';
+  delete from public.ledgers where id = lr;
 
   ------------------------------------------------------------------
   -- 8. 로그인하지 않은 사용자(anon)
@@ -578,7 +652,7 @@ begin
   exception when others then failed := true;
   end;
   assert failed, '❌ [anon] 로그인하지 않으면 전표를 저장할 수 없어야 함';
-  assert public.schema_version() >= 3, '❌ [버전] schema_version()이 3 이상이어야 함 (DB 업데이트 002·003 실행 여부)';
+  assert public.schema_version() >= 4, '❌ [버전] schema_version()이 4 이상이어야 함 (DB 업데이트 002~004 실행 여부)';
   failed := false;
   begin
     perform public.search_transactions(la);

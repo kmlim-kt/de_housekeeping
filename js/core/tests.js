@@ -8,6 +8,11 @@ import { signedBalance, buildAccountTree, postableAccounts, describeLines, index
 import { validateJournal, toRpcLines, isValidDate, todayLocal } from './journal.js';
 import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS } from './simple.js';
 import { budgetReport, figures as budgetFigures } from './budget.js';
+import { toCsv, parseCsv, decodeText } from './csv.js';
+import { guessHeaderRow, guessMapping, parseDate, parseMoney, buildEntries, suggestAccount, learnRules,
+  findDuplicates, entryLines, kindFor } from './importer.js';
+import { buildBackup, checkBackup, backupFileName } from './backup.js';
+import { journalRows, trialRows } from './exports.js';
 import { nextOccurrence, firstOccurrence, describeRule, dueList, templateLines, templateAmount } from './recurring.js';
 import { trialBalance, periodRange, accountTotal, dayBefore, balanceSheet, incomeStatement, savingsRate,
   pctChange, monthRange, shiftMonth, previousMonthEnd, currentMonth } from './reports.js';
@@ -479,6 +484,130 @@ test('반복·즐겨찾기 틀 → 분개: 간편 틀(금액 바꾸기 가능)·
   eq([templateLines(advT).ok, templateLines(advT).total, templateAmount(advT)], [true, 3300000, 3300000]);
   eq(templateLines({ mode: 'advanced', lines: [{ account_id: 'a', debit: 1, credit: 0 }] }).ok, false);
   eq(templateLines(null).ok, false);
+});
+
+// ---------------------------------------------------------------------
+// CSV
+// ---------------------------------------------------------------------
+test('CSV 만들기: BOM, 쉼표·따옴표·줄바꿈 처리, 엑셀 수식 방지', () => {
+  const s = toCsv([['날짜', '메모', '금액'], ['2026-11-07', '점심, "김밥"', 3000], ['2026-11-08', '=SUM(A1)', -500]]);
+  eq(s, '﻿날짜,메모,금액\r\n2026-11-07,"점심, ""김밥""",3000\r\n2026-11-08,\'=SUM(A1),-500\r\n');
+});
+test('CSV 읽기: 따옴표 안 쉼표·줄바꿈, 빈 줄 제외, 탭 구분자 자동', () => {
+  eq(parseCsv('a,b\r\n"1,2","x\ny"\r\n\r\n3,4'), [['a', 'b'], ['1,2', 'x\ny'], ['3', '4']]);
+  eq(parseCsv('﻿날짜\t금액\n2026-11-07\t1,000'), [['날짜', '금액'], ['2026-11-07', '1,000']]);
+});
+test('인코딩: UTF-8은 그대로, EUC-KR(은행 CSV)은 한글로', () => {
+  eq(decodeText(new TextEncoder().encode('거래일자,금액').buffer), { text: '거래일자,금액', encoding: 'utf-8' });
+  const euckr = new Uint8Array([0xB0, 0xC5, 0xB7, 0xA1]);   // "거래" (EUC-KR)
+  eq(decodeText(euckr.buffer), { text: '거래', encoding: 'euc-kr' });
+});
+
+// ---------------------------------------------------------------------
+// 은행·카드 내역 가져오기
+// ---------------------------------------------------------------------
+const BANK = [
+  ['○○은행 거래내역 조회'], ['계좌번호', '123-456'],
+  ['거래일시', '적요', '출금액', '입금액', '잔액'],
+  ['2026.11.01 09:12', '급여', '', '3,000,000', '5,000,000'],
+  ['2026.11.03', '스타벅스 강남(카드)', '5,800', '', '4,994,200'],
+  ['2026.11.05', '관리비', '230,000', '0', '4,764,200'],
+  ['합계', '', '235,800', '3,000,000', ''],
+];
+test('가져오기: 머리글 줄·열 자동 추측 (통장 — 출금/입금 열)', () => {
+  const hr = guessHeaderRow(BANK);
+  eq(hr, 2);
+  eq(guessMapping(BANK[hr]), { date: 0, memo: 1, out: 2, in: 3, amount: -1, mode: 'split' });
+});
+test('가져오기: 카드 명세서 — 금액 열 하나', () => {
+  eq(guessMapping(['이용일', '이용가맹점', '이용금액', '할부']), { date: 0, memo: 1, out: -1, in: -1, amount: 2, mode: 'card' });
+});
+test('가져오기: 날짜 여러 형식·엑셀 날짜 숫자', () => {
+  eq([parseDate('2026-11-07'), parseDate('2026.11.7'), parseDate('2026/11/07 13:45'), parseDate('20261107'),
+      parseDate('26.11.07'), parseDate('2026년 11월 7일'), parseDate(46333), parseDate('합계'), parseDate('2026-02-30')],
+     ['2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07', null, null]);
+});
+test('가져오기: 금액 여러 형식', () => {
+  eq([parseMoney('1,234'), parseMoney('-1,234'), parseMoney('(1,234)'), parseMoney('1,234원'), parseMoney('₩5,000'),
+      parseMoney('1234.00'), parseMoney(''), parseMoney('abc'), parseMoney(1500)],
+     [1234, -1234, -1234, 1234, 5000, 1234, 0, null, 1500]);
+});
+test('가져오기: 거래 목록 만들기 — 방향, 날짜 못 읽는 줄(합계) 건너뜀', () => {
+  const r = buildEntries(BANK, 2, guessMapping(BANK[2]));
+  eq(r.entries.map((e) => [e.date, e.memo, e.amount, e.direction]), [
+    ['2026-11-01', '급여', 3000000, 'in'],
+    ['2026-11-03', '스타벅스 강남(카드)', 5800, 'out'],
+    ['2026-11-05', '관리비', 230000, 'out'],
+  ]);
+  eq(r.skipped, [{ row: 7, reason: '날짜를 읽을 수 없음' }]);   // 7번째 줄 "합계"
+  // 카드: 양수 = 쓴 돈, 음수 = 환불(들어온 돈)
+  const card = buildEntries([['이용일', '가맹점', '금액'], ['2026-11-02', '편의점', '4,500'], ['2026-11-04', '환불', '-4,500']], 0,
+    { date: 0, memo: 1, amount: 2, mode: 'card' });
+  eq(card.entries.map((e) => e.direction), ['out', 'in']);
+  // 엑셀에서 원래 값으로 읽은 줄: 날짜 = 엑셀 날짜 숫자, 금액 = 숫자
+  const xl = buildEntries([['이용일', '가맹점', '금액'], [46329, 'GS25', 4500], [46330, '환불', -4500]], 0,
+    { date: 0, memo: 1, amount: 2, mode: 'card' });
+  eq(xl.entries.map((e) => [e.date, e.amount, e.direction]), [['2026-11-03', 4500, 'out'], ['2026-11-04', 4500, 'in']]);
+});
+test('가져오기: 항목 추천·학습 (같은 가맹점 → 예전에 고른 항목)', () => {
+  const rules = learnRules({}, [{ memo: '스타벅스 강남점 (카드)', direction: 'out', accountId: 'food' }]);
+  eq(suggestAccount({ memo: '스타벅스 강남점 12/03', direction: 'out' }, rules, { out: 'etc', in: 'etcIn' }), 'food');
+  eq(suggestAccount({ memo: '처음 보는 곳', direction: 'out' }, rules, { out: 'etc', in: 'etcIn' }), 'etc');
+  eq(suggestAccount({ memo: '스타벅스 강남점', direction: 'in' }, rules, { out: 'etc', in: 'etcIn' }), 'etcIn');
+});
+test('가져오기: 중복 찾기 (같은 날·같은 금액·같은 계정, 개수만큼만)', () => {
+  const entries = [{ date: '2026-11-03', amount: 5800 }, { date: '2026-11-03', amount: 5800 }, { date: '2026-11-05', amount: 230000 }];
+  const existing = [{ txn_date: '2026-11-03', lines: [{ account_id: 'food', debit: 5800, credit: 0 }, { account_id: 'bank1', debit: 0, credit: 5800 }] }];
+  eq([...findDuplicates(entries, existing, 'bank1')], [0]);
+  eq([...findDuplicates(entries, existing, 'card1')], []);
+});
+test('가져오기: 분개 만들기·종류 (나간 돈 = 차변 상대/대변 파일 계정)', () => {
+  eq(entryLines({ amount: 5800, direction: 'out' }, 'card1', 'food'),
+     [{ account_id: 'food', debit: 5800, credit: 0 }, { account_id: 'card1', debit: 0, credit: 5800 }]);
+  eq(entryLines({ amount: 3000000, direction: 'in' }, 'bank1', 'salary'),
+     [{ account_id: 'bank1', debit: 3000000, credit: 0 }, { account_id: 'salary', debit: 0, credit: 3000000 }]);
+  eq([kindFor('out', 'expense', 'liability'), kindFor('in', 'income', 'asset'), kindFor('out', 'liability', 'asset'),
+      kindFor('out', 'asset', 'asset'), kindFor('in', 'expense', 'liability')],
+     ['expense', 'income', 'card_payment', 'transfer', 'manual']);
+});
+
+// ---------------------------------------------------------------------
+// 백업
+// ---------------------------------------------------------------------
+test('백업: 만들기 → 확인 (요약, 차대 불일치·없는 계정 감지), 파일 이름', () => {
+  const b = buildBackup({
+    ledgerName: '우리집', schemaVersion: 4, budgets: [], recurring: [], favorites: [], now: new Date(2026, 10, 7),
+    accounts: [{ id: 'a', name: '현금', type: 'asset', sort_order: 1 }, { id: 'b', name: '식비', type: 'expense', sort_order: 2 }],
+    transactions: [
+      { id: 't1', txn_date: '2026-11-01', memo: '', kind: 'expense', lines: [
+        { account_id: 'b', debit: 100, credit: 0, line_no: 1 }, { account_id: 'a', debit: 0, credit: 100, line_no: 2 }] },
+      { id: 't2', txn_date: '2026-11-02', is_deleted: true, lines: [
+        { account_id: 'b', debit: 50, credit: 0, line_no: 1 }, { account_id: 'a', debit: 0, credit: 50, line_no: 2 }] },
+    ],
+  });
+  const c = checkBackup(JSON.parse(JSON.stringify(b)));
+  eq([c.ok, c.summary.accounts, c.summary.transactions, c.summary.deleted], [true, 2, 1, 1]);
+  b.transactions[0].lines[0].debit = 99;
+  b.transactions[1].lines[0].account_id = 'zzz';
+  eq(checkBackup(b).errors, ['차변·대변이 맞지 않는 전표가 1건 있습니다.', '없는 계정을 가리키는 전표가 1건 있습니다.']);
+  eq(checkBackup({ format: 'x' }).ok, false);
+  eq(backupFileName('우리집/가계부', new Date(2026, 10, 7)), '가계부-백업-우리집가계부-20261107.json');
+});
+
+test('내보내기: 분개장 CSV는 분개 라인마다 한 줄, 날짜순, 차변·대변 열', () => {
+  const byId = indexAccounts(ACCS2);
+  const rows = journalRows([
+    { id: 'bbbbbbbb-2', txn_date: '2026-11-05', memo: '점심', kind: 'expense', lines: [
+      { account_id: 'food', debit: 30000, credit: 0, line_no: 1 }, { account_id: 'card1', debit: 0, credit: 30000, line_no: 2 }] },
+    { id: 'aaaaaaaa-1', txn_date: '2026-11-01', memo: '개시', kind: 'opening', lines: [
+      { account_id: 'cash', debit: 100, credit: 0, line_no: 1 }, { account_id: 'open', debit: 0, credit: 100, line_no: 2 }] },
+  ], byId);
+  eq(rows[0], ['날짜', '전표 메모', '종류', '계정', '분류', '차변', '대변', '줄 메모', '전표 번호']);
+  eq(rows.slice(1).map((r) => [r[0], r[3], r[5], r[6]]), [
+    ['2026-11-01', '현금', 100, ''], ['2026-11-01', '기초 순자산', '', 100],
+    ['2026-11-05', '식비', 30000, ''], ['2026-11-05', '신용카드 > 주 사용 카드', '', 30000]]);
+  const tbCsv = trialRows(trialBalance(TB_ROWS, { hideZero: true }));
+  eq(tbCsv.at(-1), ['합계', '', '', 2460000, 2460000, 1800000, 1800000]);
 });
 
 /** 모든 테스트 실행 → [{name, ok, error}] */

@@ -14,6 +14,8 @@ import { formatAmount, parseAmount } from '../../core/money.js';
 import { periodRange, PERIOD_LABELS } from '../../core/reports.js';
 import { isValidDate } from '../../core/journal.js';
 import { searchTransactions, setTransactionDeleted, purgeTransaction } from '../../data/api.js';
+import { downloadCsv, stamp } from '../download.js';
+import { journalRows } from '../../core/exports.js';
 
 const PAGE = 50;
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -43,8 +45,24 @@ export function render(view, ctx) {
   const results = h('div', { class: 'card' });
   const more = h('div');
 
+  // 현재 필터의 결과 전체를 분개장 CSV로
+  const csvBtn = h('button', { class: 'btn small', type: 'button' }, 'CSV');
+  csvBtn.addEventListener('click', () => withBusy(csvBtn, '…', async () => {
+    try {
+      const all = [];
+      for (let offset = 0; ; offset += 500) {
+        const r = await searchTransactions({ ...currentQuery(offset), limit: 500 });
+        all.push(...r.rows);
+        if (r.rows.length < 500 || all.length >= 20000) break;
+      }
+      if (!all.length) return toast('내보낼 거래가 없습니다.');
+      downloadCsv(`거래목록-${filters.trash ? '휴지통-' : ''}${stamp()}`, journalRows(all, byId));
+      toast(`${all.length}건을 CSV로 내려받았습니다.`);
+    } catch (err) { toast(err.message, { type: 'error' }); }
+  }));
+
   append(view,
-    h('h1', { class: 'view-title' }, '거래 목록'),
+    h('div', { class: 'row between' }, h('h1', { class: 'view-title' }, '거래 목록'), csvBtn),
     h('div', { class: 'stack' }, modeTabs, filterBox, summary, results, more));
 
   drawModeTabs();

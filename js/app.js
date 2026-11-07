@@ -106,7 +106,7 @@ async function enterApp(session, force = false) {
 
   setState({ ledgers, ledgerId, accounts, favorites, offlineMode });
   prefs.set('ledgerId', ledgerId);
-  renderShell(root, { switchLedger, reloadAccounts, reloadFavorites });
+  renderShell(root, { switchLedger, reloadAccounts, reloadFavorites, reloadLedgers });
   setState({ queue: await queueInfo() });
 
   if (offlineMode) {
@@ -119,7 +119,7 @@ async function enterApp(session, force = false) {
 }
 
 /** 이 앱이 필요로 하는 DB 버전 (sql/migrations 를 실행하면 올라감) */
-const REQUIRED_SCHEMA = 3;
+const REQUIRED_SCHEMA = 4;
 
 async function checkSchema() {
   try {
@@ -182,6 +182,18 @@ async function reloadAccounts() {
   const accounts = await listAccounts(state.ledgerId);
   prefs.set('cache.accounts.' + state.ledgerId, accounts);
   setState({ accounts });
+}
+
+/**
+ * 장부 목록 다시 불러오기 (장부를 만들거나 삭제·이름 변경·합류한 뒤)
+ * @param {string} [selectId] 이 장부로 전환
+ */
+async function reloadLedgers(selectId) {
+  const ledgers = await listLedgers(state.user.id);
+  prefs.set('cache.ledgers.' + state.user.id, ledgers);
+  setState({ ledgers });
+  const target = selectId ?? (ledgers.some((l) => l.id === state.ledgerId) ? state.ledgerId : ledgers[0]?.id);
+  if (target && target !== state.ledgerId) await switchLedger(target);
 }
 
 /** 즐겨찾기 다시 불러오기 */
