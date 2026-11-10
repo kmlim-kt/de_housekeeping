@@ -4,7 +4,8 @@
 // =====================================================================
 
 import { parseAmount, formatAmount, formatCompact, sumAmounts, reformatTyping, MAX_AMOUNT } from './money.js';
-import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts } from './balance.js';
+import { signedBalance, buildAccountTree, postableAccounts, describeLines, indexAccounts,
+  flattenAccountTree, accountRank, moveAccount, moveAccountTo } from './balance.js';
 import { validateJournal, toRpcLines, isValidDate, todayLocal, nowTimeLocal, isValidTime, formatTime, compareTransactions } from './journal.js';
 import { buildSimple, buildOpening, sortByRecent, mostRecentId, defaultChoice, parseSimple, SIMPLE_FORMS,
   groupOptions, groupOf, childToPreselect } from './simple.js';
@@ -16,7 +17,7 @@ import { buildBackup, checkBackup, backupFileName } from './backup.js';
 import { journalRows, trialRows } from './exports.js';
 import { nextOccurrence, firstOccurrence, describeRule, dueList, templateLines, templateAmount } from './recurring.js';
 import { trialBalance, periodRange, accountTotal, dayBefore, balanceSheet, incomeStatement, savingsRate,
-  pctChange, monthRange, shiftMonth, previousMonthEnd, currentMonth } from './reports.js';
+  pctChange, monthRange, shiftMonth, previousMonthEnd, currentMonth, dailyExpense } from './reports.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -102,6 +103,48 @@ test('계정: 기록 가능한 계정 = 하위 없는 계정, 숨김 제외, "�
   const list = postableAccounts(ACCS);
   eq(list.map((a) => a.label), ['현금', '보통예금 > 주거래 통장', '신용카드 > 주 사용 카드', '식비']);
   eq(postableAccounts(ACCS, { includeHidden: true }).length, 5);
+});
+// 순서 변경 결과를 계정 목록에 적용
+const applyMoves = (accs, changes) => {
+  const m = new Map(changes.map((c) => [c.id, c.sort_order]));
+  return accs.map((a) => (m.has(a.id) ? { ...a, sort_order: m.get(a.id) } : a));
+};
+test('계정 순서: 상위 계정 아래로 → 하위 계정도 함께 이동, 다른 분류는 그대로', () => {
+  const ch = moveAccount(ACCS, 'cash', 1);
+  const after = applyMoves(ACCS, ch);
+  const tree = buildAccountTree(after);
+  eq(tree.asset.map((a) => a.id), ['bank', 'cash']);
+  eq(tree.asset[0].children.map((a) => a.id), ['bank1', 'old']);
+  eq(flattenAccountTree(after).filter((a) => a.type === 'asset').map((a) => a.id), ['bank', 'bank1', 'old', 'cash']);
+  eq(ch.every((c) => ['cash', 'bank', 'bank1', 'old'].includes(c.id)), true, '자산 분류만 바뀜');
+  // 정렬 번호도 트리 순서와 같아짐 (한 줄로 늘어놓는 곳 대비)
+  const nums = flattenAccountTree(after).filter((a) => a.type === 'asset').map((a) => a.sort_order);
+  eq(nums, [...nums].sort((x, y) => x - y));
+});
+test('계정 순서: 하위 계정은 같은 상위 안에서만, 끝이면 변화 없음', () => {
+  const after = applyMoves(ACCS, moveAccount(ACCS, 'old', -1));
+  eq(buildAccountTree(after).asset[1].children.map((a) => a.id), ['old', 'bank1']);
+  eq(moveAccount(ACCS, 'cash', -1), []);
+  eq(moveAccount(ACCS, 'bank', 1), []);
+  eq(moveAccount(ACCS, 'old', 1), []);
+  eq(moveAccount(ACCS, 'card1', -1), []);
+  eq(moveAccount(ACCS, 'nope', 1), []);
+});
+test('계정 순서: 끌어서 원하는 자리로 (맨 아래 → 맨 위, 제자리는 변화 없음)', () => {
+  const accs = [...ACCS, { id: 'save', name: '적금', type: 'asset', parent_id: null, sort_order: 30, is_hidden: false }];
+  const after = applyMoves(accs, moveAccountTo(accs, 'save', 0));
+  eq(buildAccountTree(after).asset.map((a) => a.id), ['save', 'cash', 'bank']);
+  const after2 = applyMoves(accs, moveAccountTo(accs, 'cash', 2));
+  eq(flattenAccountTree(after2).filter((a) => a.type === 'asset').map((a) => a.id), ['bank', 'bank1', 'old', 'save', 'cash']);
+  eq(moveAccountTo(accs, 'bank', 1), []);
+  eq(moveAccountTo(accs, 'bank', 3), []);
+  eq(moveAccountTo(accs, 'bank', -1), []);
+});
+test('계정 순서: 위로 갔다 아래로 오면 원래 순서', () => {
+  const a1 = applyMoves(ACCS, moveAccount(ACCS, 'bank', -1));
+  const a2 = applyMoves(a1, moveAccount(a1, 'bank', 1));
+  eq(flattenAccountTree(a2).map((a) => a.id), flattenAccountTree(ACCS).map((a) => a.id));
+  eq(accountRank(a2).get('food'), 6);
 });
 test('계정: 분개 미리보기 문장', () => {
   const byId = indexAccounts(ACCS);
@@ -443,11 +486,11 @@ test('기간: 이번 달·지난 달·올해 (말일·연초 경계)', () => {
 // 예산
 // ---------------------------------------------------------------------
 const B_ACCS = [
-  { id: 'food', name: '식비', parent_id: null, sort_order: 410 },
-  { id: 'eat', name: '외식', parent_id: 'food', sort_order: 411 },
-  { id: 'grocery', name: '장보기', parent_id: 'food', sort_order: 412 },
-  { id: 'trans', name: '교통', parent_id: null, sort_order: 430 },
-  { id: 'etc', name: '기타 지출', parent_id: null, sort_order: 520 },
+  { id: 'food', name: '식비', type: 'expense', parent_id: null, sort_order: 410 },
+  { id: 'eat', name: '외식', type: 'expense', parent_id: 'food', sort_order: 411 },
+  { id: 'grocery', name: '장보기', type: 'expense', parent_id: 'food', sort_order: 412 },
+  { id: 'trans', name: '교통', type: 'expense', parent_id: null, sort_order: 430 },
+  { id: 'etc', name: '기타 지출', type: 'expense', parent_id: null, sort_order: 520 },
 ];
 const B_ROWS = [
   { account_id: 'eat', type: 'expense', parent_id: 'food', debit_total: 250000, credit_total: 0 },
@@ -469,6 +512,38 @@ test('예산: 상위·하위 모두 예산이면 합계는 상위만 (이중 계
   const r = budgetReport([{ account_id: 'food', amount: 500000 }, { account_id: 'eat', amount: 200000 }], B_ROWS, B_ACCS);
   eq(r.items.map((i) => [i.name, i.spent, i.status]), [['식비', 540000, 'over'], ['외식', 250000, 'over']]);
   eq([r.total.budget, r.total.spent], [500000, 540000]);
+});
+test('오늘 지출: 합계·항목별(상위로 묶음)·거래 목록, 환불은 빼고 이체·다른 날은 제외', () => {
+  const accs = [
+    { id: 'cash', name: '현금', type: 'asset', parent_id: null },
+    { id: 'bank', name: '보통예금', type: 'asset', parent_id: null },
+    { id: 'card', name: '신용카드', type: 'liability', parent_id: null },
+    ...B_ACCS,
+  ];
+  const L = (account_id, debit, credit) => ({ account_id, debit, credit });
+  const txns = [
+    { id: 't1', txn_date: '2026-11-10', txn_time: '08:10:00', memo: '김밥', created_at: '1', lines: [L('eat', 4000, 0), L('cash', 0, 4000)] },
+    { id: 't2', txn_date: '2026-11-10', txn_time: '18:30:00', memo: '장보기', created_at: '2',
+      lines: [L('grocery', 30000, 0), L('trans', 1500, 0), L('card', 0, 31500)] },
+    { id: 't3', txn_date: '2026-11-10', txn_time: null, memo: '환불', created_at: '3', lines: [L('card', 5000, 0), L('grocery', 0, 5000)] },
+    { id: 't4', txn_date: '2026-11-10', txn_time: '12:00:00', memo: '이체', created_at: '4', lines: [L('bank', 10000, 0), L('cash', 0, 10000)] },
+    { id: 't5', txn_date: '2026-11-09', txn_time: '12:00:00', memo: '어제', created_at: '5', lines: [L('etc', 9000, 0), L('cash', 0, 9000)] },
+  ];
+  const r = dailyExpense(txns, accs, '2026-11-10');
+  eq([r.total, r.count], [30500, 3]);
+  eq(r.categories.map((c) => [c.name, c.amount]), [['식비', 29000], ['교통', 1500]]);
+  eq(r.items.map((i) => [i.id, i.time, i.amount]), [['t2', '18:30', 31500], ['t1', '08:10', 4000], ['t3', '', -5000]]);
+  eq(r.items[0].names, ['식비 > 장보기', '교통']);
+  eq(r.items[0].paidWith, ['신용카드']);
+  eq(dailyExpense(txns, accs, '2026-11-09').total, 9000);
+  eq(dailyExpense([], accs, '2026-11-10'), { total: 0, count: 0, categories: [], items: [] });
+});
+test('예산: 목록 순서는 계정과목에서 정한 순서 (상위 → 그 하위)', () => {
+  // 교통을 식비보다 위로 옮긴 뒤 (번호가 뒤섞여 있어도 트리 순서를 따름)
+  const accs = B_ACCS.map((a) => (a.id === 'trans' ? { ...a, sort_order: 400 } : a));
+  const r = budgetReport([{ account_id: 'eat', amount: 1 }, { account_id: 'food', amount: 1 },
+    { account_id: 'etc', amount: 1 }, { account_id: 'trans', amount: 1 }], B_ROWS, accs);
+  eq(r.items.map((i) => i.accountId), ['trans', 'food', 'eat', 'etc']);
 });
 test('예산: 0원 예산은 무시, 상태 기준(80% 주의, 100% 초과는 넘을 때만)', () => {
   eq(budgetReport([{ account_id: 'trans', amount: 0 }], B_ROWS, B_ACCS).items.length, 0);

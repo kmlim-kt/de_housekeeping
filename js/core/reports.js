@@ -268,3 +268,60 @@ export function periodRange(key, now = new Date()) {
     default: return { from: null, to: null };
   }
 }
+
+// ---------------------------------------------------------------------
+// 하루 지출 (대시보드 "오늘 지출")
+// ---------------------------------------------------------------------
+
+/**
+ * 하루 동안의 지출: 합계, 비용 항목(상위 계정)별 합계, 지출 거래 목록
+ *   지출 금액 = 그 전표에서 비용 계정의 차변 − 대변 (환불은 빼짐)
+ *   비용 계정이 없는 전표(이체·수입 등)는 넣지 않음
+ * @param {Array<{id, txn_date, txn_time, memo, created_at, lines: Array<{account_id, debit, credit}>}>} txns
+ * @param {Array<{id, name, type, parent_id}>} accounts
+ * @param {string} date "YYYY-MM-DD"
+ * @returns {{ total: number, count: number,
+ *   categories: Array<{ id, name, amount }>,                       // 금액 큰 순
+ *   items: Array<{ id, time, memo, amount, names: string[], paidWith: string[] }> }}  // 최근 시각 순
+ */
+export function dailyExpense(txns, accounts, date) {
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const topOf = (a) => (a.parent_id ? byId.get(a.parent_id) ?? a : a);
+  const label = (a) => (a.parent_id && byId.get(a.parent_id) ? `${byId.get(a.parent_id).name} > ${a.name}` : a.name);
+  const byCategory = new Map();
+  const items = [];
+
+  for (const t of txns) {
+    if (t.txn_date !== date) continue;
+    let amount = 0;
+    const names = [];
+    const paidWith = [];
+    for (const l of t.lines ?? []) {
+      const acc = byId.get(l.account_id);
+      if (!acc) continue;
+      if (acc.type === 'expense') {
+        const v = (l.debit ?? 0) - (l.credit ?? 0);
+        amount += v;
+        names.push(label(acc));
+        const top = topOf(acc);
+        const cat = byCategory.get(top.id) ?? { id: top.id, name: top.name, amount: 0 };
+        cat.amount += v;
+        byCategory.set(top.id, cat);
+      } else if ((l.credit ?? 0) > 0) {
+        paidWith.push(label(acc));   // 돈이 나간 곳 (현금·카드 등)
+      }
+    }
+    if (!names.length) continue;
+    items.push({ id: t.id, time: t.txn_time ? String(t.txn_time).slice(0, 5) : '', memo: t.memo ?? '',
+      amount, names: [...new Set(names)], paidWith: [...new Set(paidWith)], created_at: t.created_at ?? '' });
+  }
+
+  // 최근 것이 위로: 시각 내림차순(시각 없는 전표는 맨 아래), 같으면 입력 순서 내림차순
+  items.sort((a, b) => (b.time || '').localeCompare(a.time || '') || String(b.created_at).localeCompare(String(a.created_at)));
+  return {
+    total: sumAmounts(items.map((i) => i.amount)),
+    count: items.length,
+    categories: [...byCategory.values()].filter((c) => c.amount !== 0).sort((a, b) => b.amount - a.amount),
+    items: items.map(({ created_at, ...rest }) => rest),
+  };
+}

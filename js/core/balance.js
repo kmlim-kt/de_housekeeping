@@ -64,6 +64,68 @@ export function buildAccountTree(accounts) {
   return tree;
 }
 
+/**
+ * 트리 순서(분류 → 상위 → 그 상위의 하위)로 펼친 계정 배열
+ *   예산·목록처럼 한 줄로 늘어놓는 곳에서 계정과목 화면과 같은 순서를 쓰기 위함
+ */
+export function flattenAccountTree(accounts) {
+  const tree = buildAccountTree(accounts);
+  return ACCOUNT_TYPES.flatMap((t) => tree[t].flatMap((top) => [top, ...top.children]));
+}
+
+/** 계정 id → 트리 순서 번호 맵 */
+export function accountRank(accounts) {
+  return new Map(flattenAccountTree(accounts).map((a, i) => [a.id, i]));
+}
+
+/**
+ * 계정을 같은 묶음 안에서 한 칸 위(-1)·아래(+1)로 옮길 때 바뀌는 정렬 번호
+ *   묶음: 최상위 계정은 같은 분류의 최상위끼리, 하위 계정은 같은 상위의 하위끼리
+ *   그 분류 전체를 트리 순서대로 10 간격으로 다시 매기고, 값이 바뀐 계정만 돌려줌
+ *   (처음 한 번은 여러 개가 바뀔 수 있고, 그다음부터는 보통 몇 개만 바뀜)
+ * @param {Array} accounts 계정 목록
+ * @param {string} id 옮길 계정
+ * @param {-1|1} dir 위(-1) / 아래(+1)
+ * @returns {Array<{id: string, sort_order: number}>} 끝에 있어 못 옮기면 빈 배열
+ */
+export function moveAccount(accounts, id, dir) {
+  const acc = accounts.find((a) => a.id === id);
+  if (!acc) return [];
+  const i = siblingsOf(accounts, acc).findIndex((s) => s.id === id);
+  return moveAccountTo(accounts, id, i + dir);
+}
+
+/** 같은 묶음(같은 분류의 최상위 / 같은 상위의 하위) 계정들, 현재 순서대로 */
+function siblingsOf(accounts, acc, tops = buildAccountTree(accounts)[acc.type] ?? []) {
+  return acc.parent_id ? (tops.find((t) => t.id === acc.parent_id)?.children ?? []) : tops;
+}
+
+/**
+ * 계정을 같은 묶음 안의 원하는 자리(0부터)로 옮길 때 바뀌는 정렬 번호 (끌어서 옮기기)
+ * @param {Array} accounts
+ * @param {string} id
+ * @param {number} toIndex 옮긴 뒤 묶음 안에서의 자리
+ * @returns {Array<{id: string, sort_order: number}>} 자리가 그대로이거나 범위 밖이면 빈 배열
+ */
+export function moveAccountTo(accounts, id, toIndex) {
+  const acc = accounts.find((a) => a.id === id);
+  if (!acc) return [];
+  const tops = buildAccountTree(accounts)[acc.type] ?? [];
+  const siblings = siblingsOf(accounts, acc, tops);
+  const i = siblings.findIndex((s) => s.id === id);
+  if (i < 0 || toIndex === i || toIndex < 0 || toIndex >= siblings.length) return [];
+  siblings.splice(toIndex, 0, ...siblings.splice(i, 1));
+
+  const ordered = tops.flatMap((t) => [t, ...t.children]);
+  const base = Math.max(0, Math.min(...ordered.map((a) => a.sort_order)));
+  const changes = [];
+  ordered.forEach((a, k) => {
+    const next = base + k * 10;
+    if (a.sort_order !== next) changes.push({ id: a.id, sort_order: next });
+  });
+  return changes;
+}
+
 /** 계정 id → 계정 객체 맵 */
 export function indexAccounts(accounts) {
   return new Map(accounts.map((a) => [a.id, a]));

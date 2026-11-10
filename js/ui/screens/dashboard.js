@@ -1,5 +1,6 @@
 // =====================================================================
 // 대시보드
+//   오늘 지출 (합계·어제 대비·항목별·거래 목록)
 //   이번 달 수입·지출·저축·저축률 (전월 대비)
 //   순자산과 12개월 추이 그래프, 6개월 수입·지출 그래프 (표로 보기 제공)
 //   이번 달 지출 상위 항목, 예산(5단계 자리), 장부 검증
@@ -10,9 +11,9 @@ import { h, append, replace, loading, errorBox } from '../dom.js';
 import { state } from '../state.js';
 import { lineChart, groupedBarChart } from '../charts.js';
 import { formatAmount } from '../../core/money.js';
-import { rollupType, savingsRate, pctChange, monthRange, currentMonth } from '../../core/reports.js';
+import { rollupType, savingsRate, pctChange, monthRange, currentMonth, dailyExpense, dayBefore } from '../../core/reports.js';
 import { todayLocal } from '../../core/journal.js';
-import { ledgerCheck, monthlySummary, accountBalances, listBudgets } from '../../data/api.js';
+import { ledgerCheck, monthlySummary, accountBalances, listBudgets, searchTransactions } from '../../data/api.js';
 import { budgetReport } from '../../core/budget.js';
 import { statusBadge, meter, remainingText } from '../budget-view.js';
 import { recurringDue } from '../recurring-due.js';
@@ -32,20 +33,22 @@ export function render(view, ctx) {
     const today = todayLocal();
     const ym = currentMonth();
     try {
-      const [check, months, monthRows, budgets] = await Promise.all([
+      const [check, months, monthRows, budgets, recent] = await Promise.all([
         ledgerCheck(state.ledgerId),
         monthlySummary(state.ledgerId, 12, today),
         accountBalances(state.ledgerId, monthRange(ym).from, today),
         listBudgets(state.ledgerId, ym),
+        // 오늘·어제 전표 (오늘 지출 카드, 어제와 비교)
+        searchTransactions({ ledgerId: state.ledgerId, from: dayBefore(today), to: today, limit: 500 }),
       ]);
-      draw(check, months, monthRows, ym, budgets);
+      draw(check, months, monthRows, ym, budgets, recent.rows, today);
     } catch (err) {
       replace(body, errorBox(state.online ? err.message
         : '오프라인이라 장부 현황을 불러올 수 없습니다. 입력은 계속할 수 있고, 연결되면 자동으로 저장됩니다.', load));
     }
   }
 
-  function draw(r, months, monthRows, ym, budgets) {
+  function draw(r, months, monthRows, ym, budgets, recentTxns, today) {
     const cur = months.at(-1) ?? { income: 0, expense: 0, net_worth: 0 };
     const prev = months.at(-2) ?? { income: 0, expense: 0, net_worth: 0 };
     const saving = cur.income - cur.expense;
@@ -64,6 +67,8 @@ export function render(view, ctx) {
             h('p', { class: 'muted' }, '지금 가진 돈과 갚을 돈을 먼저 적어 두면 순자산이 바로 정확해집니다.'),
             h('a', { class: 'btn primary block', href: '#/opening' }, '개시 잔액 설정하기'))
         : null,
+
+      todayCard(recentTxns, today),
 
       // ---------- 이번 달 ----------
       h('section', { class: 'stack' },
@@ -129,6 +134,53 @@ function tile(label, value, previous, lowerIsBetter = false) {
 function deltaText(label, cur, prev) {
   const d = cur - prev;
   return `${label} ${d > 0 ? '▲ +' : d < 0 ? '▼ ' : ''}${formatAmount(d)}원`;
+}
+
+/**
+ * 오늘 지출: 합계(어제 대비), 비용 항목별 합계, 지출 거래 목록(최근 시각 순, 5건 넘으면 접어 둠)
+ *   아직 서버에 올라가지 않은(대기 중) 전표는 포함되지 않음
+ */
+function todayCard(txns, today) {
+  const d = dailyExpense(txns, state.accounts, today);
+  const y = dailyExpense(txns, state.accounts, dayBefore(today));
+  const diff = d.total - y.total;
+  const head = h('div', { class: 'row between' }, h('h2', {}, '오늘 지출'),
+    h('a', { href: '#/list', class: 'small' }, '거래목록 ›'));
+
+  if (!d.count) {
+    return h('section', { class: 'card stack today-card' }, head,
+      h('div', { class: 'hero num' }, '0원'),
+      h('p', { class: 'small muted' }, `오늘은 아직 지출이 없습니다.${y.total ? ` 어제는 ${formatAmount(y.total)}원 썼습니다.` : ''}`),
+      h('a', { class: 'btn primary block', href: '#/entry' }, '지출 입력하기'));
+  }
+
+  const max = Math.max(1, ...d.categories.map((c) => c.amount));
+  const row = (i) => h('li', {}, h('a', { href: `#/txn/${i.id}`, class: 'today-txn' },
+    h('span', { class: 'today-time num' }, i.time || '—'),
+    h('span', { class: 'today-main' },
+      h('span', { class: 'today-memo' }, i.memo || i.names.join(', ')),
+      h('span', { class: 'small muted' }, [i.memo ? i.names.join(', ') : '', i.paidWith.join(', ')].filter(Boolean).join(' · '))),
+    h('span', { class: 'num today-amt' + (i.amount < 0 ? ' text-ok' : '') }, formatAmount(i.amount))));
+  const first = d.items.slice(0, 5);
+  const rest = d.items.slice(5);
+
+  return h('section', { class: 'card stack today-card' }, head,
+    h('div', { class: 'hero num' }, formatAmount(d.total) + '원'),
+    h('p', { class: 'small muted' },
+      `${d.count}건 · 어제 ${formatAmount(y.total)}원`,
+      diff ? ` (${diff > 0 ? '▲ ' : '▼ '}${formatAmount(Math.abs(diff))}원 ${diff > 0 ? '더' : '덜'} 씀)` : ' (어제와 같음)'),
+    d.categories.length > 1   // 항목이 하나뿐이면 합계와 같아서 생략
+      ? h('ul', { class: 'list rank', 'aria-label': '오늘 항목별 지출' }, d.categories.map((c) =>
+          h('li', {}, h('div', { class: 'rank-row' },
+            h('div', { class: 'row between' }, h('span', {}, c.name), h('span', { class: 'num' }, formatAmount(c.amount))),
+            h('div', { class: 'rank-track', 'aria-hidden': 'true' },
+              h('div', { class: 'rank-bar', style: `width:${Math.max(2, (Math.max(0, c.amount) / max) * 100)}%` }))))))
+      : null,
+    h('ul', { class: 'list today-list', 'aria-label': '오늘 지출 거래' }, first.map(row)),
+    rest.length
+      ? h('details', { class: 'table-view' }, h('summary', {}, `나머지 ${rest.length}건 더 보기`),
+          h('ul', { class: 'list today-list' }, rest.map(row)))
+      : null);
 }
 
 /** 이번 달 지출 상위 5개 — 순위 막대(한 가지 색), 누르면 원장 */

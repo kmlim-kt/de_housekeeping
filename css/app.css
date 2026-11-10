@@ -167,6 +167,15 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--ba
 .notice.bad { background: var(--bad-soft); color: var(--bad); }
 .notice.ok { background: var(--ok-soft); color: var(--ok); }
 .text-bad { color: var(--bad); }
+.text-ok { color: var(--ok); }
+
+/* 대시보드: 오늘 지출 거래 목록 */
+.list.today-list > li { padding: 0; }
+.today-txn { display: flex; align-items: center; gap: 10px; padding: 10px 0; min-height: 48px; color: inherit; text-decoration: none; }
+.today-time { width: 44px; flex-shrink: 0; color: var(--muted); font-size: 0.85rem; }
+.today-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.today-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-amt { flex-shrink: 0; font-weight: 700; }
 .debit { color: var(--debit); }
 .credit { color: var(--credit); }
 
@@ -329,9 +338,30 @@ input.amount.big { min-height: 60px; font-size: 1.6rem; font-weight: 700; }
 
 /* ---------- 계정과목 ---------- */
 .acc-group h3 { margin-bottom: 4px; }
-.acc-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; }
-.acc-item.child { padding-left: 20px; }
-.acc-item.child::before { content: "└"; color: var(--muted); margin-right: 6px; }
+.acc-toolbar { flex-wrap: wrap; }
+.list > li.acc-li { padding: 4px 0; }
+.acc-row { display: flex; align-items: center; gap: 4px; }
+.acc-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px;
+            flex: 1; min-width: 0; border: 0; background: none; text-align: left; cursor: pointer; padding: 0;
+            color: inherit; font: inherit; }
+.acc-item .badge { flex-shrink: 0; }
+.acc-item.child::before { content: "└"; color: var(--muted); margin-right: 2px; }
+.acc-toggle { width: 36px; height: 44px; flex-shrink: 0; border: 0; border-radius: 8px; background: none;
+              color: var(--primary); cursor: pointer; font-size: 1rem; }
+.acc-toggle:hover { background: var(--surface-2); }
+.acc-toggle-space { width: 36px; flex-shrink: 0; }
+/* 끌어서 순서 바꾸기 손잡이 (터치 스크롤과 겹치지 않게 touch-action: none) */
+.acc-handle { width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 8px; background: none;
+              color: var(--muted); font-size: 1.3rem; line-height: 1; cursor: grab; touch-action: none;
+              user-select: none; -webkit-user-select: none; }
+.acc-handle:hover, .acc-handle:focus-visible { background: var(--surface-2); color: var(--primary); }
+.drag-list { user-select: none; -webkit-user-select: none; }
+.drag-list .acc-handle { cursor: grabbing; }
+li.dragging { position: relative; z-index: 5; background: var(--surface); border-radius: 10px;
+              box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); outline: 2px solid var(--primary); outline-offset: -2px; }
+.acc-children { list-style: none; margin: 0 0 6px 18px; padding: 0 0 0 12px; border-left: 3px solid var(--line-strong); }
+.acc-children > li { padding: 2px 0; border-top: 1px solid var(--line); }
+.acc-children > li:first-child { border-top: 0; }
 .acc-item .name { flex: 1; }
 .acc-item.is-hidden .name { color: var(--muted); text-decoration: line-through; }
 .acc-editor { display: grid; gap: 8px; padding: 12px; margin: 4px 0 8px; border-radius: 12px; background: var(--surface-2); }

@@ -255,7 +255,12 @@ function fromMock(table) {
       } else if (table === 'audit_log') {
         data = audit.filter((e) => e.transaction_id === f.transaction_id).slice().reverse();
       } else if (table === 'accounts') {
-        data = accounts;
+        if (op === 'update') {
+          data = accounts.filter(match);
+          data.forEach((r) => Object.assign(r, payload));
+        } else {
+          data = accounts;
+        }
       }
       // 실제 서버처럼 복사본을 돌려줌 (화면이 들고 있는 값과 서버 값이 따로 놀아야 충돌 시험이 됨)
       resolve({ data: structuredClone(single ? (data[0] ?? null) : data), error: null });

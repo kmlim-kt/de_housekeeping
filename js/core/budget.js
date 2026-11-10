@@ -6,6 +6,7 @@
 // =====================================================================
 
 import { sumAmounts } from './money.js';
+import { accountRank } from './balance.js';
 
 /** 사용률이 이 비율(%) 이상이면 "주의" */
 export const WARN_PERCENT = 80;
@@ -31,6 +32,7 @@ export const BUDGET_STATUS = {
  */
 export function budgetReport(budgets, rows, accounts) {
   const byId = new Map(accounts.map((a) => [a.id, a]));
+  const rank = accountRank(accounts);
   const spentOwn = new Map();
   for (const r of rows) {
     if (r.type === 'expense') spentOwn.set(r.account_id, r.debit_total - r.credit_total);
@@ -47,9 +49,10 @@ export function budgetReport(budgets, rows, accounts) {
     .map(([id, budget]) => {
       const acc = byId.get(id);
       const spent = spentOf(id);
-      return { accountId: id, name: acc.name, parentId: acc.parent_id, sortOrder: acc.sort_order, ...figures(budget, spent) };
+      return { accountId: id, name: acc.name, parentId: acc.parent_id, ...figures(budget, spent) };
     })
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+    // 계정과목 화면과 같은 순서 (상위 → 그 하위 → 다음 상위)
+    .sort((a, b) => (rank.get(a.accountId) ?? 1e9) - (rank.get(b.accountId) ?? 1e9));
 
   // 합계: 상위 계정에도 예산이 있는 하위 계정은 제외
   const counted = items.filter((i) => !(i.parentId && budgeted.has(i.parentId)));
