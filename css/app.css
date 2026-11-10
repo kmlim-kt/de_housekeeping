@@ -152,8 +152,9 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--ba
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px; box-shadow: var(--shadow);
 }
-.stack { display: grid; gap: 12px; }
-.stack-lg { display: grid; gap: 20px; }
+/* minmax(0, 1fr): 줄바꿈 안 되는 긴 글자가 있어도 칸이 화면 밖으로 넓어지지 않게 */
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.stack-lg { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 .row { display: flex; align-items: center; gap: 8px; }
 .row.between { justify-content: space-between; }
 .list { list-style: none; margin: 0; padding: 0; }
