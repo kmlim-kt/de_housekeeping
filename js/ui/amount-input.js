@@ -10,14 +10,16 @@ import { parseAmount, formatAmount, reformatTyping } from '../core/money.js';
  *           onChange?: (amount: number|null, text: string) => void,
  *           onReject?: (message: string) => void }} opts
  *   onReject: 숫자가 아닌 내용을 붙여넣으려 할 때 (기본: 화면 아래 알림)
+ *   onEnter: 있으면 키보드의 Enter 키가 "다음" 버튼으로 바뀌고, 누르면 저장하지 않고 이 함수를 부름
  * @returns {HTMLInputElement & { amount: number|null, setAmount: (n: number) => void }}
  */
-export function amountInput({ value = 0, label = '금액', placeholder = '0', onChange, id, onReject = (m) => toast(m, { type: 'error' }) } = {}) {
+export function amountInput({ value = 0, label = '금액', placeholder = '0', onChange, id, onEnter,
+  onReject = (m) => toast(m, { type: 'error' }) } = {}) {
   const input = h('input', {
     type: 'text',
     inputmode: 'numeric',
     autocomplete: 'off',
-    enterkeyhint: 'done',
+    enterkeyhint: onEnter ? 'next' : 'done',
     class: 'amount',
     placeholder,
     'aria-label': label,
@@ -41,6 +43,16 @@ export function amountInput({ value = 0, label = '금액', placeholder = '0', on
       onReject?.('금액은 원 단위 숫자만 붙여넣을 수 있습니다.');
     }
   });
+
+  // "다음": 폼을 저장(제출)하지 않고 다음 입력으로 넘어감
+  if (onEnter) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        onEnter();
+      }
+    });
+  }
 
   input.addEventListener('input', () => {
     const { text, caret } = reformatTyping(input.value, input.selectionStart ?? input.value.length);

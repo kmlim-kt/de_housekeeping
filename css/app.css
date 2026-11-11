@@ -298,9 +298,11 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--ba
 .je-line .amounts label.credit > span { color: var(--credit); }
 .je-line .line-no { font-size: 0.8rem; color: var(--muted); }
 
+/* 금액 입력 후 "다음"으로 넘어갈 때 위쪽 머리글에 가려지지 않게 */
+.chip-field { scroll-margin-top: 76px; }
+
+/* 미리보기·저장 버튼: 화면에 떠 있지 않고 입력 칸 아래 제자리에 고정 */
 .je-summary {
-  position: sticky; z-index: 5;
-  bottom: calc(var(--tabbar-h) + var(--safe-b) + 8px);
   display: grid; gap: 10px; padding: 12px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
 }

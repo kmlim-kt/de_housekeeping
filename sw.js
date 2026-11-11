@@ -7,7 +7,7 @@
 // (node tools/coretest.mjs 가 목록 누락을 검사합니다)
 // =====================================================================
 
-const VERSION = 'v11-1';
+const VERSION = 'v12';
 const CACHE = 'dh-app-' + VERSION;
 const CDN_CACHE = 'dh-cdn-1';
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';

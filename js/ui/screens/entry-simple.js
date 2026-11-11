@@ -167,7 +167,8 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
     amountInputs = spec.amounts.map(({ key, label }) => {
       const start = Number(init?.[key]) || 0;
       if (start) values[key] = String(start);
-      const input = amountInput({ label, value: start, onChange: (_, text) => { values[key] = text; update(); } });
+      const input = amountInput({ label, value: start, onChange: (_, text) => { values[key] = text; update(); },
+        onEnter: () => goNext(key) });
       input.classList.add('big');
       return input;
     });
@@ -189,6 +190,22 @@ export function simpleForm({ save, initial = null, submitLabel = '저장', lockK
 
     replace(body, h('div', { class: 'card stack' }, amountBox), ...pickers);
     update();
+
+    /**
+     * 금액 칸에서 키보드 "다음": 다음 금액 칸 → 없으면 키보드를 닫고 첫 선택(무엇에 썼나요? 등)으로
+     *   선택 버튼에 초점을 두면 키보드가 다시 올라오지 않아 버튼이 가려지지 않음
+     */
+    function goNext(key) {
+      const i = spec.amounts.findIndex((a) => a.key === key);
+      const nextInput = amountInputs[i + 1];
+      if (nextInput) { nextInput.focus(); return; }
+      amountInputs[i]?.blur();
+      const target = pickers[0];
+      if (!target) return;
+      target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      target.querySelector('.chip[aria-checked="true"]:not(.has-sub), .sub-chips .chip[aria-checked="true"], .chip')
+        ?.focus({ preventScroll: true });
+    }
   }
 
   /** 미리보기·저장 버튼 갱신 */
